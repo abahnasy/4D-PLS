@@ -39,6 +39,7 @@ from os.path import exists, join, isdir
 # Dataset parent class
 from datasets.common import *
 from torch.utils.data import Sampler, get_worker_info
+from utils.debugging import d_print
 from utils.mayavi_visu import *
 from utils.metrics import fast_confusion
 
@@ -63,7 +64,7 @@ class SemanticKittiDataset(PointCloudDataset):
         ##########################
 
         # Dataset folder
-        self.path = 'data/SemanticKitti'
+        self.path = './data' #AB: TODO:fix this to be configurable
 
         # Type of task conducted on this dataset
         self.dataset_task = 'slam_segmentation'
@@ -75,7 +76,8 @@ class SemanticKittiDataset(PointCloudDataset):
         if self.set == 'training':
             self.sequences = ['{:02d}'.format(i) for i in range(11) if i != 8]
         elif self.set == 'validation':
-            self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 8]
+            # self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 8]
+            self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 4]
         elif self.set == 'test':
             self.sequences = ['{:02d}'.format(i) for i in range(11, 22)]
         else:
@@ -106,7 +108,7 @@ class SemanticKittiDataset(PointCloudDataset):
             mem_gb = torch.cuda.get_device_properties(torch.device('cuda')).total_memory / (1024*1024*1024)
             self.gpu_r  = mem_gb / 11.9
             #config.max_val_points *= config.n_test_frames# int(config.max_val_points * ratio)
-
+        d_print("GPU ratio: {}".format(self.gpu_r))
         with open(config_file, 'r') as stream:
             doc = yaml.safe_load(stream)
             all_labels = doc['labels']
@@ -654,7 +656,7 @@ class SemanticKittiDataset(PointCloudDataset):
         t += [time.time()]
 
         # Display timings
-        debugT = False
+        debugT = True
         if debugT:
             print('\n************************\n')
             print('Timings:')
