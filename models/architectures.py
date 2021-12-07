@@ -76,7 +76,7 @@ def get_bbox_from_points(points):
     :param points: instance points Nx3
     :return: 3D bbox [x1,y1,z1,x2,y2,z2]
     """
-
+    points = points.cpu() #AB: temp fix
     x1 = torch.min(points[:, 0])
     x2 = torch.max(points[:, 0])
     y1 = torch.min(points[:, 1])
