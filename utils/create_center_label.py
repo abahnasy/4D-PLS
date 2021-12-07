@@ -1,3 +1,6 @@
+"""Generate Object Centerness and Point proximity Ground Truth Data
+"""
+
 import numpy as np
 import yaml
 from helper import parse_calibration, parse_poses, random_colors, gaussian_colors
@@ -5,13 +8,17 @@ from scipy.stats import multivariate_normal
 from os import listdir
 from os.path import exists, join, isdir
 import sys
+from multiprocessing import Pool, Manager
+
+from tqdm import tqdm
 
 sequences = ['{:02d}'.format(i) for i in range(11)]
-path = '../data/SemanticKitti/'
+path = '../data/' #AB: TODO: make it configurable parameter
 covariance = np.diag(np.array([1, 1, 1]))
 center_point = np.zeros((1, 3))
 
-for seq in sequences:
+# for seq in sequences:
+def process_seq(seq):
     velo_path = join(path, 'sequences', seq, 'velodyne')
     frames = np.sort([vf[:-4] for vf in listdir(velo_path) if vf.endswith('.bin')])
     seq_path = join(path, 'sequences', seq)
@@ -59,3 +66,19 @@ for seq in sequences:
                                                                   0:3]  # last 3 for offset to center
 
         np.save(save_path, center_labels)
+        
+    return
+
+
+if __name__ == '__main__':
+
+    pool = Pool(48)
+
+    
+
+    for _ in tqdm(pool.imap_unordered(process_seq, sequences), total=len(sequences)):
+        pass # hack for showing the progress bar !
+
+    pool.close()
+    pool.join()
+
