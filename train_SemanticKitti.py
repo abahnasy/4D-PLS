@@ -30,6 +30,7 @@ from models.architectures import KPFCNN
 from utils.config import Config
 from utils.trainer import ModelTrainer
 
+from utils.debugging import d_print
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -132,7 +133,8 @@ class SemanticKittiConfig(Config):
 
     # Choice of input features
     first_features_dim = 256
-    in_features_dim = 3
+    # in_features_dim = 3
+    in_features_dim = 5 #AB: change to 5 to include all YXZR as point features besides 1 in the position 0, don't know why?!
     free_dim = 3
 
     # Can the network learn modulations
@@ -230,8 +232,8 @@ if __name__ == '__main__':
     # Choose here if you want to start training from a previous snapshot (None for new training)
 
     #previous_training_path = 'Log_2020-06-05_17-18-35'
-    previous_training_path = 'Log_2020-10-06_16-51-05'#'Log_2020-08-30_01-29-20'
-    #previous_training_path =''
+    # previous_training_path = 'Log_2020-10-06_16-51-05'#'Log_2020-08-30_01-29-20'
+    previous_training_path =''
     # Choose index of checkpoint to start from. If None, uses the latest chkp
     chkp_idx = None
     if previous_training_path:
@@ -319,7 +321,31 @@ if __name__ == '__main__':
 
     # Define network model
     t1 = time.time()
-    net = KPFCNN(config, training_dataset.label_values, training_dataset.ignored_labels)
+    # net = KPFCNN(config, training_dataset.label_values, training_dataset.ignored_labels)
+    ############################################################################
+    # AB: define PointNet Model
+    ############################################################################
+    def weights_init(m):
+        classname = m.__class__.__name__
+        if classname.find('Conv2d') != -1:
+            torch.nn.init.xavier_normal_(m.weight.data)
+            torch.nn.init.constant_(m.bias.data, 0.0)
+        elif classname.find('Linear') != -1:
+            torch.nn.init.xavier_normal_(m.weight.data)
+            torch.nn.init.constant_(m.bias.data, 0.0)
+
+    def inplace_relu(m):
+        classname = m.__class__.__name__
+        if classname.find('ReLU') != -1:
+            m.inplace=True
+
+    NUM_CLASSES = 20
+    from models.pointnet_sem_seg import get_model # ,get_loss
+    # MODEL = importlib.import_module('pointnet2_sem_seg')
+    net = get_model(config, training_dataset.label_values, training_dataset.ignored_labels).cuda()
+    # criterion = get_loss().cuda()
+    net.apply(inplace_relu)
+    # net = net.apply(weights_init) #TODO: check weight init error later !
 
     debug = False
     if debug:

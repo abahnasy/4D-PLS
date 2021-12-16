@@ -46,6 +46,7 @@ from utils.metrics import fast_confusion
 from datasets.common import grid_subsampling, batch_neighbors
 from utils.config import bcolors
 
+from utils.debugging import d_print, write_pc
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -108,7 +109,7 @@ class SemanticKittiDataset(PointCloudDataset):
             mem_gb = torch.cuda.get_device_properties(torch.device('cuda')).total_memory / (1024*1024*1024)
             self.gpu_r  = mem_gb / 11.9
             #config.max_val_points *= config.n_test_frames# int(config.max_val_points * ratio)
-        d_print("GPU ratio: {}".format(self.gpu_r))
+
         with open(config_file, 'r') as stream:
             doc = yaml.safe_load(stream)
             all_labels = doc['labels']
@@ -446,12 +447,14 @@ class SemanticKittiDataset(PointCloudDataset):
                 # Place points in original frame reference to get coordinates
                 if f_inc == 0:
                     new_coords = points[rand_order, :]
+                    assert new_coords.shape[1] == 4, "debugging check" #AB
                 else:
                     # We have to project in the first frame coordinates
                     new_coords = new_points - pose0[:3, 3]
                     # new_coords = new_coords.dot(pose0[:3, :3])
                     new_coords = np.sum(np.expand_dims(new_coords, 2) * pose0[:3, :3], axis=1)
                     new_coords = np.hstack((new_coords, points[rand_order, 3:]))
+                    assert new_coords.shape[1] == 4 ," debugging check" #AB
 
                 #center_labels = np.reshape(center_labels,(-1,1))
                 d_coords = new_coords.shape[1]
@@ -487,6 +490,12 @@ class SemanticKittiDataset(PointCloudDataset):
 
             t += [time.time()]
 
+            d_print("shape of the grid_subsampling returns")
+            d_print("in_pts: {}".format(in_pts.shape))
+            d_print("in_fts: {}".format(in_fts.shape))
+            d_print("in_lbls: {}".format(in_lbls.shape))
+            d_print("in_slbls: {}".format(in_slbls.shape))
+
             # Number collected
             n = in_pts.shape[0]
 
@@ -513,9 +522,9 @@ class SemanticKittiDataset(PointCloudDataset):
                 in_slbls = in_slbls[input_inds, :]
                 n = input_inds.shape[0]
 
-            in_times = in_fts[:, 8]#hard coded last dim
-            in_cts = in_fts[:, d_coords:8]
-            in_fts = in_fts[:, 0:d_coords]
+            in_times = in_fts[:, 8]#hard coded last dim      #AB: relative frame time
+            in_cts = in_fts[:, d_coords:8] #AB: centers
+            in_fts = in_fts[:, 0:d_coords] #AB: feats -> YXZR
 
             t += [time.time()]
 
@@ -550,6 +559,13 @@ class SemanticKittiDataset(PointCloudDataset):
 
             t += [time.time()]
 
+            #AB: write point cloud for visualization
+            # print(type(in_pts))
+            # d_print(in_pts.shape)
+            in_pts, _ = rotate_pc(in_pts, 30)
+            # d_print("check dimenstins and type after rotation {} and {}".format(in_pts.shape, type(in_pts)))
+            # write_pc(in_pts, "raw point cloud frame_{}_rotatation_{}".format(f_ind, 90))
+            # exit()
             if self.set in ['validation', 'test']:
                 # Data augmentation
                 _, scale, R = self.augmentation_transform(in_pts)
@@ -628,10 +644,13 @@ class SemanticKittiDataset(PointCloudDataset):
             # Use all coordinates
             stacked_features = np.hstack((stacked_features, features[:3]))
         elif self.config.in_features_dim == 5:
+            # d_print("adding XYZR as point features for this batch !")
             # Use all coordinates + reflectance
             stacked_features = np.hstack((stacked_features, features))
         else:
             raise ValueError('Only accepted input dimensions are 1, 4 and 7 (without and with XYZ)')
+        #AB: why they used ones in index 0 !
+        assert stacked_features.shape[0] == stacked_features[:,0].sum(), "debuggging check"
 
         t += [time.time()]
 
@@ -642,6 +661,7 @@ class SemanticKittiDataset(PointCloudDataset):
         #   Points, neighbors, pooling indices for each layers
         #
 
+        #AB: specific to KPConv, comment out it !
         # Get the whole input list
         input_list = self.segmentation_inputs(stacked_points,
                                               stacked_features,
@@ -656,7 +676,7 @@ class SemanticKittiDataset(PointCloudDataset):
         t += [time.time()]
 
         # Display timings
-        debugT = True
+        debugT = False
         if debugT:
             print('\n************************\n')
             print('Timings:')
@@ -1034,6 +1054,7 @@ class SemanticKittiSampler(Sampler):
                 self.epoch_counter += 1
 
             else:
+                #AB: what does this line do?
                 self.dataset.potentials[gen_indices] = torch.ceil(self.dataset.potentials[gen_indices])
                 self.dataset.potentials[gen_indices] += torch.from_numpy(np.random.rand(gen_indices.shape[0]) * 0.1 + 0.21)
                 # Update epoch inds

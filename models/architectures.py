@@ -76,7 +76,7 @@ def get_bbox_from_points(points):
     :param points: instance points Nx3
     :return: 3D bbox [x1,y1,z1,x2,y2,z2]
     """
-    points = points.cpu() #AB: temp fix
+
     x1 = torch.min(points[:, 0])
     x2 = torch.max(points[:, 0])
     y1 = torch.min(points[:, 1])
@@ -455,12 +455,12 @@ class KPFCNN(nn.Module):
 
 
         # Head of network
-        f = self.head_mlp(x, batch)
-        c = self.head_center(f, batch)
+        f = self.head_mlp(x, batch) # AB: batch is not needed as an input !
+        c = self.head_center(f, batch) # AB: batch is not needed as an input !
         c = self.sigmoid(c)
-        v = self.head_var(f, batch)
+        v = self.head_var(f, batch) # AB: batch is not needed as an input !
         v = F.relu(v)
-        x = self.head_softmax(f, batch)
+        x = self.head_softmax(f, batch) # AB: batch is not needed as an input !
 
         return x, c, v, f
 
