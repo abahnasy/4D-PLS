@@ -26,12 +26,12 @@ class get_model(nn.Module):
             self.criterion = torch.nn.CrossEntropyLoss(ignore_index=-1)
         # self.k = num_class
         self.C = len(lbl_values) - len(ign_lbls)
-        out_dim = 128
+        out_dim = 256 #AB: make the size of the output of PointNet match the output size of KPConv
         
         self.feat = PointNetEncoder(global_feat=False, feature_transform=True, channel=9)
         self.conv1 = torch.nn.Conv1d(1088, 512, 1)
         self.conv2 = torch.nn.Conv1d(512, 256, 1)
-        self.conv3 = torch.nn.Conv1d(256, 128, 1)
+        self.conv3 = torch.nn.Conv1d(256, out_dim, 1) #AB: 256 instead of the original 128
         # self.conv4 = torch.nn.Conv1d(128, self.C, 1)
         # self.bn1 = nn.BatchNorm1d(512)
         # self.bn2 = nn.BatchNorm1d(256)
@@ -67,14 +67,14 @@ class get_model(nn.Module):
             config: TODO: remove from this and KPConv models
         Returns:
         """
-        d_print("inside forward function")
+        # d_print("inside forward function")
         #AB: prepare the correct feature inputs by concatenating the features again
         #AB: point feature is [Reflectance, c_x, c_y, c_z, t]
         #AB: Batch size is always one since we load only one 4D volume per dataloader
         
-        d_print("points shape {}".format(batch.points[0].shape))
-        for i in range(len(batch.points)):
-            d_print("shape of point list is {}".format(batch.points[i].shape), color=bcolors.OKBLUE)
+        # d_print("points shape {}".format(batch.points[0].shape))
+        # for i in range(len(batch.points)):
+            # d_print("shape of point list is {}".format(batch.points[i].shape), color=bcolors.OKBLUE)
 
         
         # d_print("centers shape {}".format(batch.centers.shape))
@@ -117,7 +117,7 @@ class get_model(nn.Module):
         # x = x.view(batchsize, n_pts, self.C)
         # return x, trans_feat
 
-        d_print("output of point net is {}".format(x.shape))
+        # d_print("output of point net is {}".format(x.shape))
         
         # Pipeline Specific part
 
@@ -154,20 +154,25 @@ class get_model(nn.Module):
             target = target.transpose(0,1).squeeze() #AB: move from [1,N] -> [N,]
             centers_p = centers_p.squeeze().squeeze() #AB: make it of shape (N,)
             # Cross entropy loss
-            d_print("before cross entropy loss")
-            d_print("shape of outptus {}".format(outputs.shape))
-            d_print("shape of the targets {}".format(target.shape))
+            # d_print("before cross entropy loss")
+            # d_print("shape of outptus {}".format(outputs.shape))
+            # d_print("shape of the targets {}".format(target.shape))
             self.output_loss = self.criterion(outputs, target)
             weights = (centers_gt[:, 0] > 0) * 99 + (centers_gt[:, 0] >= 0) * 1
             self.center_loss = weighted_mse_loss(centers_p, centers_gt[:, 0], weights)
 
             if not self.pre_train:
+                # d_print("shape of embeddings {}".format(embeddings.shape))
+                #AB: remove batch dimensions from embeddings and varainces
+                embeddings = torch.squeeze(embeddings, dim=0)
+                variances = torch.squeeze(variances, dim=0)
                 self.instance_half_loss = instance_half_loss(embeddings, ins_labels)
                 self.instance_loss = iou_instance_loss(centers_p, embeddings, variances, ins_labels, points, times)
                 self.variance_loss = variance_smoothness_loss(variances, ins_labels)
                 self.variance_l2 = variance_l2_loss(variances, ins_labels)
             
             #AB: comment out regularizer loss, related to KPConv only !
+            self.reg_loss = torch.tensor(0.0).to(embeddings.device)
             # Regularization of deformable offsets
             # if self.deform_fitting_mode == 'point2point':
             #     self.reg_loss = p2p_fitting_regularizer(self)
@@ -178,8 +183,9 @@ class get_model(nn.Module):
 
             # Combined loss
             #return self.instance_loss + self.variance_loss
-            # return self.output_loss + self.reg_loss + self.center_loss + self.instance_loss*0.1+ self.variance_loss*0.01
-            return self.output_loss + self.center_loss + self.instance_loss*0.1+ self.variance_loss*0.01
+            
+            return self.output_loss + self.reg_loss + self.center_loss + self.instance_loss*0.1+ self.variance_loss*0.01
+            
 # class get_loss(torch.nn.Module):
 #     def __init__(self, mat_diff_loss_scale=0.001):
 #         super(get_loss, self).__init__()
@@ -190,7 +196,25 @@ class get_model(nn.Module):
 #         mat_diff_loss = feature_transform_reguliarzer(trans_feat)
 #         total_loss = loss + mat_diff_loss * self.mat_diff_loss_scale
 #         return total_loss
+    def accuracy(self, outputs, labels):
+        """
+        Computes accuracy of the current batch
+        :param outputs: logits predicted by the network
+        :param labels: labels
+        :return: accuracy value
+        """
+        #AB: remove batch dims
+        outputs = torch.squeeze(outputs, dim=0)
+        # Set all ignored labels to -1 and correct the other label to be in [0, C-1] range
+        target = - torch.ones_like(labels)
+        for i, c in enumerate(self.valid_labels):
+            target[labels == c] = i
 
+        predicted = torch.argmax(outputs.data, dim=1)
+        total = target.size(0)
+        correct = (predicted == target).sum().item()
+
+        return correct / total
 
 if __name__ == '__main__':
     model = get_model(13)
