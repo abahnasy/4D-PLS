@@ -25,6 +25,7 @@
 # Basic libs
 import torch
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import pickle
 import os
@@ -32,6 +33,7 @@ from os import makedirs, remove
 from os.path import exists, join
 import time
 import sys
+from utils.debugging import d_print
 
 # PLY reader
 from utils.ply import read_ply, write_ply
@@ -66,6 +68,9 @@ class ModelTrainer:
         :param on_gpu: Train on GPU or CPU
         """
 
+        # Writer will output to ./runs/ directory by default
+        self.logger = SummaryWriter()
+        self.global_step = 0
         ############
         # Parameters
         ############
@@ -215,9 +220,23 @@ class ModelTrainer:
 
                 # Forward pass
                 outputs, centers_output, var_output, embedding = net(batch, config)
+                # d_print("shape of the backbone outputs")
+                # d_print("outputs {}".format(outputs.shape))
+                # d_print("centers_output {}".format(centers_output.shape))
+                # d_print("var_output {}".format(var_output.shape))
+                # d_print("embedding {}".format(embedding.shape))
                 loss = net.loss(outputs, centers_output, var_output, embedding, batch.labels, batch.ins_labels,
                                 batch.centers, batch.points, batch.times.unsqueeze(1))
                 acc = net.accuracy(outputs, batch.labels)
+
+                #AB: log into tensorbaord
+                self.logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                self.logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                self.logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                self.logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                self.logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
+                self.logger.add_scalar('acc/train', acc*100, self.global_step)
+                self.global_step += 1
 
                 t += [time.time()]
 
