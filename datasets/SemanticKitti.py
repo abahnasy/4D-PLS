@@ -490,11 +490,11 @@ class SemanticKittiDataset(PointCloudDataset):
 
             t += [time.time()]
 
-            d_print("shape of the grid_subsampling returns")
-            d_print("in_pts: {}".format(in_pts.shape))
-            d_print("in_fts: {}".format(in_fts.shape))
-            d_print("in_lbls: {}".format(in_lbls.shape))
-            d_print("in_slbls: {}".format(in_slbls.shape))
+            # d_print("shape of the grid_subsampling returns")
+            # d_print("in_pts: {}".format(in_pts.shape))
+            # d_print("in_fts: {}".format(in_fts.shape))
+            # d_print("in_lbls: {}".format(in_lbls.shape))
+            # d_print("in_slbls: {}".format(in_slbls.shape))
 
             # Number collected
             n = in_pts.shape[0]
@@ -562,7 +562,7 @@ class SemanticKittiDataset(PointCloudDataset):
             #AB: write point cloud for visualization
             # print(type(in_pts))
             # d_print(in_pts.shape)
-            in_pts, _ = rotate_pc(in_pts, 30)
+            # in_pts, _ = rotate_pc(in_pts, 30)
             # d_print("check dimenstins and type after rotation {} and {}".format(in_pts.shape, type(in_pts)))
             # write_pc(in_pts, "raw point cloud frame_{}_rotatation_{}".format(f_ind, 90))
             # exit()

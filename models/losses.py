@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 
+from utils.debugging import d_print
 try:
     from itertools import ifilterfalse
 except ImportError:  # py3k
@@ -72,11 +73,11 @@ def instance_half_loss(embeddings, ins_labels):
             continue
         else:
             ins_idxs = torch.where(ins_labels == instance)
-            ins_embeddings = embeddings[ins_idxs]
-            n_points = ins_embeddings.shape[0]
-            perm = torch.randperm(n_points)
-            embedding_half1 = ins_embeddings[perm[0:int(n_points / 2)]]
-            embedding_half2 = ins_embeddings[perm[int(n_points / 2):]]
+            ins_embeddings = embeddings[ins_idxs]          
+            n_points = ins_embeddings.shape[0]          
+            perm = torch.randperm(n_points)          
+            embedding_half1 = ins_embeddings[perm[0:int(n_points / 2)]]          
+            embedding_half2 = ins_embeddings[perm[int(n_points / 2):]]          
             mean1 = torch.mean(embedding_half1, 0, True)
             mean2 = torch.mean(embedding_half2, 0, True)
             ins_half_loss = torch.nn.MSELoss()(mean1, mean2)
