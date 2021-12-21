@@ -143,6 +143,7 @@ class Config:
     augment_scale_max = 1.1
     augment_symmetries = [False, False, False]
     augment_rotation = 'vertical'
+    augment_rotation_angle = 15
     augment_noise = 0.005
     augment_color = 0.7
 

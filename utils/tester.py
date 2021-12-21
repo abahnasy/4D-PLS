@@ -73,7 +73,7 @@ class ModelTester:
         # Load previous checkpoint
         ##########################
 
-        checkpoint = torch.load(chkp_path)
+        checkpoint = torch.load(chkp_path, map_location=self.device)
         net.load_state_dict(checkpoint['model_state_dict'])
         self.epoch = checkpoint['epoch']
         net.eval()
@@ -864,7 +864,8 @@ class ModelTester:
                 f_inc_r_mask_list = batch.f_inc_reproj_masks
 
                 labels_list = batch.val_labels
-                torch.cuda.synchronize(self.device)
+                if config.on_gpu and torch.cuda.is_available():
+                  torch.cuda.synchronize(self.device)
 
                 t += [time.time()]
 
