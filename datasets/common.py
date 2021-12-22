@@ -265,7 +265,7 @@ class PointCloudDataset(Dataset):
             if self.config.augment_rotation == 'vertical':
 
                 # Create random rotations
-                theta = 30/360 * 2 * np.pi #np.random.rand() * 2 * np.pi
+                theta = 60/360 * 2 * np.pi #np.random.rand() * 2 * np.pi
                 c, s = np.cos(theta), np.sin(theta)
                 R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float32)
 
