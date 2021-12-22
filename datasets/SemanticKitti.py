@@ -71,16 +71,16 @@ class SemanticKittiDataset(PointCloudDataset):
         # Training or test set
         self.set = set
 
-        # # Get a list of sequences
-        # if self.set == 'training':
-        #     #['{:02d}'.format(i) for i in range(11) if i != 8]
-        # elif self.set == 'validation':
-        #     #['{:02d}'.format(i) for i in range(11) if i == 8]
-        # elif self.set == 'test':
-        #     #['{:02d}'.format(i) for i in range(11, 22)]
-        # else:
-        #     raise ValueError('Unknown set for SemanticKitti data: ', self.set)
-        self.sequences = ['04']
+        # Get a list of sequences
+        if self.set == 'training':
+            self.sequences = ['{:02d}'.format(i) for i in range(11) if i != 8]
+        elif self.set == 'validation':
+            self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 8]
+        elif self.set == 'test':
+            self.sequences = ['{:02d}'.format(i) for i in range(11, 22)]
+        else:
+            raise ValueError('Unknown set for SemanticKitti data: ', self.set)
+        # self.sequences = ['04']
         # List all files in each sequence
         self.frames = []
         for seq in self.sequences:
