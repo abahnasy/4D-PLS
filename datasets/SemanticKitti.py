@@ -76,9 +76,10 @@ class SemanticKittiDataset(PointCloudDataset):
         # Get a list of sequences
         if self.set == 'training':
             self.sequences = ['{:02d}'.format(i) for i in range(11) if i != 8]
+            # self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 0]
         elif self.set == 'validation':
-            # self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 8]
-            self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 4]
+            self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 8]
+            # self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 0]
         elif self.set == 'test':
             self.sequences = ['{:02d}'.format(i) for i in range(11, 22)]
         else:
@@ -610,6 +611,7 @@ class SemanticKittiDataset(PointCloudDataset):
             if batch_n > int(self.batch_limit):
                 break
 
+        # d_print(">>> {} >> {}".format(batch_n, int(self.batch_limit)))    
         ###################
         # Concatenate batch
         ###################

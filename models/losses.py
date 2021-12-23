@@ -1,3 +1,4 @@
+from typing_extensions import NotRequired
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -103,13 +104,21 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
     loss.requires_grad = True
 
     if variances.shape[1] - embeddings.shape[1] > 4:
+        raise NotImplementedError
         global_emb, _ = torch.max(embeddings, 0, keepdim=True)
         embeddings = torch.cat((embeddings, global_emb.repeat(embeddings.shape[0],1)),1)
 
     if variances.shape[1] - embeddings.shape[1] == 3:
+        raise NotImplementedError
         embeddings = torch.cat((embeddings, points[0]), 1)
     if variances.shape[1] - embeddings.shape[1] == 4:
-        embeddings = torch.cat((embeddings, points[0], times), 1)
+        # embeddings = torch.cat((embeddings, points[0], times), 1)
+        # d_print(embeddings.shape)
+        # d_print(points.shape)
+        # d_print(times.shape)
+        embeddings = torch.cat((embeddings, points, times), 1) #AB: fix 
+
+    assert embeddings.shape[1] == variances.shape[1], "error"
 
     for instance in instances:
         if instance == 0:
@@ -378,7 +387,7 @@ def lovasz_softmax_flat(probas, labels, classes='present'):
     class_to_sum = list(range(C)) if classes in ['all', 'present'] else classes
     for c in class_to_sum:
         fg = (labels == c).float()  # foreground for class c
-        if (classes is 'present' and fg.sum() == 0):
+        if (classes == 'present' and fg.sum() == 0):
             continue
         if C == 1:
             if len(classes) > 1:

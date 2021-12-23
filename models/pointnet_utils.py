@@ -6,6 +6,7 @@ from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
 
+device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device('cpu')
 
 class STN3d(nn.Module):
     def __init__(self, channel):
@@ -44,7 +45,7 @@ class STN3d(nn.Module):
         iden = Variable(torch.from_numpy(np.array([1, 0, 0, 0, 1, 0, 0, 0, 1]).astype(np.float32))).view(1, 9).repeat(
             batchsize, 1)
         if x.is_cuda:
-            iden = iden.cuda()
+            iden = iden.to(device)
         x = x + iden
         x = x.view(-1, 3, 3)
         return x
@@ -89,7 +90,7 @@ class STNkd(nn.Module):
         iden = Variable(torch.from_numpy(np.eye(self.k).flatten().astype(np.float32))).view(1, self.k * self.k).repeat(
             batchsize, 1)
         if x.is_cuda:
-            iden = iden.cuda()
+            iden = iden.to(device)
         x = x + iden
         x = x.view(-1, self.k, self.k)
         return x
@@ -102,9 +103,9 @@ class PointNetEncoder(nn.Module):
         self.conv1 = torch.nn.Conv1d(channel, 64, 1)
         self.conv2 = torch.nn.Conv1d(64, 128, 1)
         self.conv3 = torch.nn.Conv1d(128, 1024, 1)
-        # self.bn1 = nn.BatchNorm1d(64)
-        # self.bn2 = nn.BatchNorm1d(128)
-        # self.bn3 = nn.BatchNorm1d(1024)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.bn2 = nn.BatchNorm1d(128)
+        self.bn3 = nn.BatchNorm1d(1024)
         self.global_feat = global_feat
         self.feature_transform = feature_transform
         if self.feature_transform:
@@ -121,8 +122,8 @@ class PointNetEncoder(nn.Module):
         if D > 3:
             x = torch.cat([x, feature], dim=2)
         x = x.transpose(2, 1)
-        # x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu((self.conv1(x)))
+        x = F.relu(self.bn1(self.conv1(x)))
+        # x = F.relu((self.conv1(x)))
 
         if self.feature_transform:
             trans_feat = self.fstn(x)
@@ -133,10 +134,10 @@ class PointNetEncoder(nn.Module):
             trans_feat = None
 
         pointfeat = x
-        # x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu((self.conv2(x)))
-        # x = self.bn3(self.conv3(x))
-        x = (self.conv3(x))
+        x = F.relu(self.bn2(self.conv2(x)))
+        # x = F.relu((self.conv2(x)))
+        x = self.bn3(self.conv3(x))
+        # x = (self.conv3(x))
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(-1, 1024)
         if self.global_feat:
@@ -150,6 +151,6 @@ def feature_transform_reguliarzer(trans):
     d = trans.size()[1]
     I = torch.eye(d)[None, :, :]
     if trans.is_cuda:
-        I = I.cuda()
+        I = I.to(device)
     loss = torch.mean(torch.norm(torch.bmm(trans, trans.transpose(2, 1)) - I, dim=(1, 2)))
     return loss
