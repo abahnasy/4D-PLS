@@ -265,7 +265,7 @@ class PointCloudDataset(Dataset):
             if self.config.augment_rotation == 'vertical':
 
                 # Create random rotations
-                theta = np.random.rand() * 2 * np.pi
+                theta = 60/360 * 2 * np.pi #np.random.rand() * 2 * np.pi
                 c, s = np.cos(theta), np.sin(theta)
                 R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float32)
 
@@ -307,7 +307,7 @@ class PointCloudDataset(Dataset):
         # Noise
         #######
 
-        noise = (np.random.randn(points.shape[0], points.shape[1]) * self.config.augment_noise).astype(np.float32)
+        #noise = (np.random.randn(points.shape[0], points.shape[1]) * self.config.augment_noise).astype(np.float32)
 
         ##################
         # Apply transforms
@@ -315,7 +315,7 @@ class PointCloudDataset(Dataset):
 
         # Do not use np.dot because it is multi-threaded
         #augmented_points = np.dot(points, R) * scale + noise
-        augmented_points = np.sum(np.expand_dims(points, 2) * R, axis=1) * scale + noise
+        augmented_points = np.sum(np.expand_dims(points, 2) * R, axis=1) #* scale + noise
 
 
         if normals is None:

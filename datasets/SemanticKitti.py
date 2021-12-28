@@ -550,7 +550,7 @@ class SemanticKittiDataset(PointCloudDataset):
 
             if self.set in ['validation', 'test']:
                 # Data augmentation
-                _, scale, R = self.augmentation_transform(in_pts)
+                in_pts, scale, R = self.augmentation_transform(in_pts) # TSY: passed rotated points to in_pts
             else:
                 in_pts, scale, R = self.augmentation_transform(in_pts)
 

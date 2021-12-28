@@ -150,7 +150,7 @@ if __name__ == '__main__':
     config.n_test_frames = 4 #it should be smaller than config.n_frames
     if config.n_frames < config.n_test_frames:
         config.n_frames = config.n_test_frames
-    config.big_gpu = True
+    config.big_gpu = False
     config.dataset_task = '4d_panoptic'
     #config.sampling = 'density'
     config.sampling = 'importance'
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     if config.dataset_task == 'classification':
         a = 1/0
     elif config.dataset_task == 'cloud_segmentation':
-                tester.cloud_segmentation_test(net, test_loader, config)
+        tester.cloud_segmentation_test(net, test_loader, config)
     elif config.dataset_task == 'slam_segmentation':
         tester.slam_segmentation_test(net, test_loader, config)
     elif config.dataset_task == '4d_panoptic':
