@@ -1,8 +1,12 @@
 *.pyc
 *.so
 *.o
-/.cache
 
+/.cache
 /results
 /data
 /test
+/runs
+/outputs
+/notebooks
+/output

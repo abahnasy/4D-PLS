@@ -455,12 +455,12 @@ class KPFCNN(nn.Module):
 
 
         # Head of network
-        f = self.head_mlp(x, batch)
-        c = self.head_center(f, batch)
+        f = self.head_mlp(x, batch) # AB: batch is not needed as an input !
+        c = self.head_center(f, batch) # AB: batch is not needed as an input !
         c = self.sigmoid(c)
-        v = self.head_var(f, batch)
+        v = self.head_var(f, batch) # AB: batch is not needed as an input !
         v = F.relu(v)
-        x = self.head_softmax(f, batch)
+        x = self.head_softmax(f, batch) # AB: batch is not needed as an input !
 
         return x, c, v, f
 

@@ -123,6 +123,7 @@ if __name__ == '__main__':
 
   # get test set
   test_sequences = DATA["split"][FLAGS.split]
+  test_sequences = [4] #AB: TODO: fix
 
   # create evaluator
   class_evaluator = Panoptic4DEval(nr_classes, None, ignore_class, offset = 2 ** 32, min_points=FLAGS.min_inst_points)
