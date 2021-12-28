@@ -62,6 +62,7 @@ def index_points(points, idx):
 
 def farthest_point_sample(xyz, npoint):
     """
+    #AB:Sampling Strategy, return indices of the sampled points
     Input:
         xyz: pointcloud data, [B, N, 3]
         npoint: number of samples
@@ -159,6 +160,9 @@ def sample_and_group_all(xyz, points):
 
 
 class PointNetSetAbstraction(nn.Module):
+    """
+    #AB: 
+    """
     def __init__(self, npoint, radius, nsample, in_channel, mlp, group_all):
         super(PointNetSetAbstraction, self).__init__()
         self.npoint = npoint

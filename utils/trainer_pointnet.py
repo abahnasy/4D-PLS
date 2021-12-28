@@ -185,22 +185,18 @@ class ModelTrainerPointNet:
         #     checkpoint_directory = None
         #     PID_file = None
 
-        # Loop variables
-        t0 = time.time()
-        t = [time.time()]
-        last_display = time.time()
-        mean_dt = np.zeros(1)
-
-
         # Start training loop
         for epoch in range(config.max_epoch):
             self.step = 0
-            for batch in training_loader: 
+            for batch in training_loader:
+                
                 # move to device (GPU)
                 sample_gpu ={}
                 if 'cuda' in self.device.type:
                     for k, v in batch.items():
                         sample_gpu[k] = v.to(self.device)
+                else:
+                    sample_gpu = batch
                 # zero the parameter gradients
                 self.optimizer.zero_grad()
                 # extract data used in loss functions 

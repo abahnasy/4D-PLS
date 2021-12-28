@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+from models.pointnet_sem_seg import PointNet
+from models.pointnet2_sem_seg import PointNet2
 from utils.trainer_pointnet import ModelTrainerPointNet
 from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 from utils.debugging import d_print, write_pc
@@ -64,9 +66,10 @@ def my_app(cfg : DictConfig) -> None:
     # ----------------------------------------------------------------- #
     
     
-    from models.pointnet_sem_seg import PointNet
+    
     # MODEL = importlib.import_module('pointnet2_sem_seg')
-    net = PointNet(train_set.label_values, train_set.ignored_labels).to(device)
+    # net = PointNet(train_set.label_values, train_set.ignored_labels).to(device)
+    net = PointNet2(train_set.label_values, train_set.ignored_labels).to(device)
     # criterion = get_loss().to(device)
     net.apply(inplace_relu)
     # net = net.apply(weights_init) #TODO: check weight init error later !
