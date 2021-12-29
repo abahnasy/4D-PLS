@@ -1,12 +1,24 @@
+import os
+from typing import OrderedDict
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import hydra
 
-from models.losses import *
+from models.losses_pointnet import *
 from models.pointnet2_utils import PointNetSetAbstraction,PointNetFeaturePropagation
+from utils.config import bcolors
 from utils.debugging import d_print
 
+def same_shape(shape1, shape2):
+    if len(shape1) != len(shape2):
+        return False
+    for i in range(len(shape1)):
+        if shape1[i] != shape2[i]:
+            return False
+    return True
 
 class PointNet2(nn.Module):
     def __init__(
@@ -16,13 +28,15 @@ class PointNet2(nn.Module):
         pre_train=False, 
         class_w = [],
         first_features_dim=256,
-        free_dim = 4
+        free_dim = 4,
+        pretreianed_weights = False, #AB: load pretrained weights for backbone and heads
         ):
         super(PointNet2, self).__init__()
         self.pre_train = pre_train
         self.class_w = class_w
         self.first_features_dim  = first_features_dim
         self.free_dim = free_dim
+        self.pretreianed_weights = pretreianed_weights
         #AB: variable is used in the loss function 
         self.valid_labels = np.sort([c for c in lbl_values if c not in ign_lbls])
         # Choose segmentation loss
@@ -55,6 +69,67 @@ class PointNet2(nn.Module):
         self.head_softmax = UnaryBlock(self.first_features_dim, self.C, False, 0)
         self.head_center = UnaryBlock(self.first_features_dim, 1, False, 0, False)
         self.sigmoid = nn.Sigmoid()
+
+        if self.pretreianed_weights:
+            self._load_pretrained_weights()
+
+    def _load_pretrained_weights(self):
+        """ Load pretrained weights for net, do it for the finetuning task
+        backbone weights will be loaded from https://github.com/yanx27/Pointnet_Pointnet2_pytorch
+        heads weights will be loaded from 4D-Panoptic Segmentation check point
+        """
+        BACKBONE_WEIGHTS_PATH = hydra.utils.to_absolute_path("./pretrained_weights/pointnet2/best_model.pth")
+        HEADS_WEIGHTS_PATH = hydra.utils.to_absolute_path("./results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar")
+        # check valid path
+        if not os.path.exists(BACKBONE_WEIGHTS_PATH):
+            d_print(BACKBONE_WEIGHTS_PATH, bcolors.FAIL)
+            raise ValueError(" above Path doesn't exist")
+        if not os.path.exists(HEADS_WEIGHTS_PATH):
+            d_print(HEADS_WEIGHTS_PATH, bcolors.FAIL)
+            raise ValueError(" above Path doesn't exist")
+        # load backbone weights
+        # loaded_state_dict = torch.load(BACKBONE_WEIGHTS_PATH, map_location=torch.device('cpu'))['model_state_dict']
+        loaded_state_dict = OrderedDict()
+        # load KPConv weights which contains heads weights
+        heads_loaded_sate_dict = torch.load(HEADS_WEIGHTS_PATH, map_location=torch.device('cpu'))['model_state_dict']
+        # get heads weights
+        heads_state_dict = OrderedDict()
+        for k,v in heads_loaded_sate_dict.items():
+            if "head" in k:
+                heads_state_dict[k] = v
+        # add heads weights to the backbone loaded weights
+        loaded_state_dict.update(heads_state_dict)
+        # get current architecture weights dictionary
+        model_state_dict = self.state_dict()
+        n, n_total = 0, len(model_state_dict.keys())
+        updated_state_dict = OrderedDict()
+
+        # get list of the unexpected keys
+        unexpected_keys = []
+        size_mismatch = []
+        for k, v in loaded_state_dict.items():
+            if k in model_state_dict.keys():
+                if same_shape(v.shape, model_state_dict[k].shape):
+                    updated_state_dict[k] = v
+                    n += 1
+                else:
+                    size_mismatch.append(k)
+            else:
+                unexpected_keys.append(k)
+        self.load_state_dict(updated_state_dict, strict = False)
+        # get list of the missing keys
+        missing_keys = [key for key in model_state_dict.keys() if key not in loaded_state_dict.keys()]
+
+        # print the results of laoding
+        if n == n_total: 
+            color = bcolors.OKGREEN 
+        else: 
+            color = bcolors.WARNING
+        d_print("loaded {}/{} from the backbone weights".format(n, n_total), color)
+        d_print("Missing keys are : {}".format(missing_keys), bcolors.FAIL)
+        d_print("Unexpected keys are: {}".format(unexpected_keys), bcolors.FAIL)
+        d_print("size mismatch keys are: {}".format(size_mismatch), bcolors.FAIL)
+
 
     def forward(self, xyz):
         l0_points = xyz

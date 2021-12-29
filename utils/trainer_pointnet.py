@@ -353,6 +353,8 @@ class ModelTrainerPointNet:
         Validation method for slam segmentation models
         """
 
+        raise NotImplementedError
+
         ############
         # Initialize
         ############
