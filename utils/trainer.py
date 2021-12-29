@@ -69,7 +69,7 @@ class ModelTrainer:
         """
 
         # Writer will output to ./runs/ directory by default
-        self.logger = SummaryWriter()
+        self.logger = SummaryWriter(log_dir='kpconv')
         self.global_step = 0
         ############
         # Parameters
@@ -236,10 +236,13 @@ class ModelTrainer:
                 # self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
                 #AB: log into tensorbaord
                 self.logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                self.logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
                 self.logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                self.logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
                 self.logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
                 self.logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
                 self.logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
+                
                 self.logger.add_scalar('acc/train', acc*100, self.global_step)
                 self.global_step += 1
 

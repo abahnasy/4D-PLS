@@ -23,8 +23,11 @@
 
 # Common libs
 import signal
+from hydra.types import HydraContext
 
 from torch.utils.data import dataset
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
 # Dataset
 from datasets.SemanticKitti import *
@@ -213,7 +216,8 @@ class SemanticKittiConfig(Config):
 #       \***************/
 #
 
-if __name__ == '__main__':
+@hydra.main(config_path="conf_kpconv", config_name="config")
+def my_app(cfg : DictConfig) -> None:
 
     ############################
     # Initialize the environment
@@ -242,6 +246,7 @@ if __name__ == '__main__':
 
         # Find all snapshot in the chosen training folder
         chkp_path = os.path.join('results', previous_training_path, 'checkpoints')
+        chkp_path = hydra.utils.to_absolute_path(chkp_path)
         chkps = [f for f in os.listdir(chkp_path) if f[:4] == 'chkp']
 
         # Find which snapshot to restore
@@ -250,6 +255,7 @@ if __name__ == '__main__':
         else:
             chosen_chkp = np.sort(chkps)[chkp_idx]
         chosen_chkp = os.path.join('results', previous_training_path, 'checkpoints', chosen_chkp)
+        chosen_chkp = hydra.utils.to_absolute_path(chosen_chkp)
 
     else:
         chosen_chkp = None
@@ -266,7 +272,7 @@ if __name__ == '__main__':
     # Initialize configuration class
     config = SemanticKittiConfig()
     if previous_training_path:
-        config.load(os.path.join('results', previous_training_path))
+        config.load(hydra.utils.to_absolute_path(os.path.join('results', previous_training_path)))
         config.saving_path = None
     config.learning_rate = 1e-2 #after pretraining change to 1e-3 
     config.pre_train = False
@@ -382,3 +388,7 @@ if __name__ == '__main__':
 
     print('Forcing exit now')
     os.kill(os.getpid(), signal.SIGINT)
+
+
+if __name__ == '__main__':
+    my_app()
