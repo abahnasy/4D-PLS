@@ -7,11 +7,11 @@ def d_print(str, color = bcolors.WARNING):
     color = color
     print("{:}{}{:}".format(color, str, bcolors.ENDC))
 
-def write_pc(pc: np.ndarray, name: str):
+def write_pc(pc: np.ndarray, abs_path: str):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(pc)
-    o3d.io.write_point_cloud("./output/{}.ply".format(name), pcd)
-    if os.path.exists("./output/{}.ply".format(name)):
+    o3d.io.write_point_cloud("{}.ply".format(abs_path), pcd)
+    if os.path.exists("{}.ply".format(abs_path)):
         d_print("successful write on desk", bcolors.OKGREEN)
     else:
         d_print("Invalid Point CLoud write", bcolors.FAIL)

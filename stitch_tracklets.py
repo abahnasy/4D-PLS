@@ -116,10 +116,10 @@ def associate_instances_overlapping_frames(previous_ins_label, current_ins_label
     return association_costs_matched,  associations
 
 def main(FLAGS):
-    data_cfg = 'data/SemanticKitti/semantic-kitti.yaml'
+    data_cfg = 'data/semantic-kitti.yaml'
     DATA = yaml.safe_load(open(data_cfg, 'r'))
     split = 'valid'
-    dataset = 'data/SemanticKitti'
+    dataset = 'data'
 
     prediction_dir =  FLAGS.predictions
     if split == 'valid':

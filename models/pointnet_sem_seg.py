@@ -5,11 +5,13 @@ import torch.utils.data
 import torch.nn.functional as F
 from torchmetrics import IoU
 
+import numpy as np
+
 from models.pointnet_utils import PointNetEncoder, feature_transform_reguliarzer
 from utils.debugging import d_print, write_pc
 from utils.config import bcolors
 
-from models.losses import *
+from models.losses_pointnet import *
 
 from models.architectures import p2p_fitting_regularizer
 

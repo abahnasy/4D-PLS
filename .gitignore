@@ -3,10 +3,12 @@
 *.o
 
 /.cache
+/test
 /results
 /data
-/test
 /runs
 /outputs
 /notebooks
 /output
+/pretrained_weights
+/dgcnn_runs
