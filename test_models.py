@@ -225,7 +225,7 @@ if __name__ == '__main__':
     if config.dataset_task == 'classification':
         a = 1/0
     elif config.dataset_task == 'cloud_segmentation':
-                tester.cloud_segmentation_test(net, test_loader, config)
+        tester.cloud_segmentation_test(net, test_loader, config)
     elif config.dataset_task == 'slam_segmentation':
         tester.slam_segmentation_test(net, test_loader, config)
     elif config.dataset_task == '4d_panoptic':

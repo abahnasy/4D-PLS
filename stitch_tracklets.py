@@ -179,7 +179,6 @@ def main(FLAGS):
 
     test_sequences = FLAGS.sequences
     test_sequences= [4] #AB: TODO: fix
-
     for sequence in test_sequences:
         calib = parse_calibration(os.path.join(dataset, "sequences", '{0:02d}'.format(sequence), "calib.txt"))
         poses_f64 = parse_poses(os.path.join(dataset, "sequences", '{0:02d}'.format(sequence), "poses.txt"), calib)

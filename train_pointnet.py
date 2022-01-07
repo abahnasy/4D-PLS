@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+from models.pointnet_sem_seg import PointNet
+from models.pointnet2_sem_seg import PointNet2
 from utils.trainer_pointnet import ModelTrainerPointNet
 from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 from utils.debugging import d_print, write_pc
@@ -42,7 +44,7 @@ def my_app(cfg : DictConfig) -> None:
     DATASET_PATH = hydra.utils.to_absolute_path('data')
     train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train')
     val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val')
-    train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_set, shuffle = True,batch_size= 4, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=1, pin_memory=True)
     
     # ----------------------------------------------------------------- #
@@ -64,12 +66,16 @@ def my_app(cfg : DictConfig) -> None:
     # ----------------------------------------------------------------- #
     
     
-    from models.pointnet_sem_seg import PointNet
+    
     # MODEL = importlib.import_module('pointnet2_sem_seg')
-    net = PointNet(train_set.label_values, train_set.ignored_labels).to(device)
+    # net = PointNet(train_set.label_values, train_set.ignored_labels).to(device)
+    net = PointNet2(train_set.label_values, train_set.ignored_labels, pretreianed_weights=True).to(device)
     # criterion = get_loss().to(device)
     net.apply(inplace_relu)
     # net = net.apply(weights_init) #TODO: check weight init error later !
+    
+    # load original weights
+
 
     trainer = ModelTrainerPointNet(net, cfg.trainer, chkp_path=chosen_chkp)
     trainer.train(net, train_loader, val_loader, cfg.trainer)

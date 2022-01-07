@@ -4,6 +4,7 @@ from time import time
 import yaml
 import numpy as np
 from torch.utils.data import Dataset
+import hydra
 
 from utils.debugging import d_print, write_pc
 from datasets.common import grid_subsampling
@@ -30,11 +31,12 @@ class SemanticKittiDataSet(Dataset):
         """
         super().__init__()
         # Dataset folder
-        self.path = path
+        self.path = hydra.utils.to_absolute_path(path)
         # train or test set
         self.set = set
         # number of concatenated frames
-        self.pointnet_size = 4096
+        self.grid_subsampling = False
+        self.pointnet_size = 8192
         self.n_frames = n_frames
         self.sampling = sampling
         self.n_test_frames = 4
@@ -201,6 +203,7 @@ class SemanticKittiDataSet(Dataset):
         merged_ins_labels = np.zeros((0,), dtype=np.int32)
         merged_coords = np.zeros((0, 9), dtype=np.float32)
 
+        volume_prev_frames = [] #AB: used for visualization and debugging only
         while num_merged < self.n_frames and f_ind - f_inc >= 0:
             
             # Current frame pose
@@ -247,6 +250,7 @@ class SemanticKittiDataSet(Dataset):
                     mask[idxs] = 1
                 else:
                     pass
+                volume_prev_frames.append(str(f_ind - f_inc))
             
             
             assert mask.shape[0] == center_labels.shape[0]
@@ -292,19 +296,23 @@ class SemanticKittiDataSet(Dataset):
             num_merged += 1
             f_inc += 1
 
-        # Subsample merged frames
-        first_subsampling_dl = 0.06 * 2
-        # d_print("from inside the dataloader getitem functions")
-        # d_print(merged_points.shape)
-        # d_print(merged_coords.shape)
-        # d_print(merged_labels.shape)
-        # d_print(merged_ins_labels.shape)
-        # write_pc(merged_points, "before_grid_subsampling")
-        in_pts, in_fts, in_lbls, in_slbls = grid_subsampling(merged_points,
-                                                    features=merged_coords,
-                                                    labels=merged_labels,
-                                                    ins_labels=merged_ins_labels,
-                                                    sampleDl=first_subsampling_dl)
+        # grid subsampling for the  merged frames
+        # refer to : KPCONV author phd thesis
+        first_subsampling_dl = 0.06 * 2        
+        if self.grid_subsampling:
+            in_pts, in_fts, in_lbls, in_slbls = grid_subsampling(
+                merged_points,
+                features=merged_coords,
+                labels=merged_labels,
+                ins_labels=merged_ins_labels,
+                sampleDl=first_subsampling_dl
+                )
+        else:
+            in_pts = merged_points
+            in_fts = merged_coords
+            in_lbls = merged_labels
+            in_slbls = merged_ins_labels
+
         # Number collected
         n = in_pts.shape[0]
         # Safe check
@@ -312,7 +320,8 @@ class SemanticKittiDataSet(Dataset):
             raise ValueError("not enough points after subsampling !!")
 
     
-        # PREPARE BLOCK DATA FOR DEEPNETS TRAINING/TESTING
+        # AB: PointNet related part, where the 4D volumes are subsampled to fixed size to maintain a 
+        # fixed batch size.
         
         in_pts , idxs = self._sample_data(in_pts, self.pointnet_size)
         # in_pts = in_pts[idxs]
@@ -322,10 +331,12 @@ class SemanticKittiDataSet(Dataset):
 
     
         sample = {
-            'in_pts': in_pts,
-            'in_fts': in_fts,
-            'in_lbls': in_lbls,
-            'in_slbls': in_slbls
+            # temp variable for visualizations and debugging
+            # 'volume_name': "seq_{:02d}_frames_{:06d}_{}".format((s_ind), (f_ind), "_".join(volume_prev_frames)),
+            'in_pts': in_pts, # points in the global position according to SLAM transformations
+            'in_fts': in_fts, # points in frame t frame of reference
+            'in_lbls': in_lbls, # semantic labels
+            'in_slbls': in_slbls # instance labels
         }
         return sample
 

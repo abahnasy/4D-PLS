@@ -307,7 +307,7 @@ class PointCloudDataset(Dataset):
         # Noise
         #######
 
-        noise = (np.random.randn(points.shape[0], points.shape[1]) * self.config.augment_noise).astype(np.float32)
+        #noise = (np.random.randn(points.shape[0], points.shape[1]) * self.config.augment_noise).astype(np.float32)
 
         ##################
         # Apply transforms

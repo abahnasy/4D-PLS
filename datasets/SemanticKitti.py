@@ -27,6 +27,7 @@ import time
 import numpy as np
 import pickle
 import torch
+import hydra
 import yaml
 from multiprocessing import Lock
 import torch
@@ -66,6 +67,7 @@ class SemanticKittiDataset(PointCloudDataset):
 
         # Dataset folder
         self.path = './data' #AB: TODO:fix this to be configurable
+        self.path = hydra.utils.to_absolute_path(self.path)
 
         # Type of task conducted on this dataset
         self.dataset_task = 'slam_segmentation'
@@ -75,11 +77,11 @@ class SemanticKittiDataset(PointCloudDataset):
 
         # Get a list of sequences
         if self.set == 'training':
-            self.sequences = ['{:02d}'.format(i) for i in range(11) if i != 8]
-            # self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 0]
+            # self.sequences = ['{:02d}'.format(i) for i in range(11) if i != 8]
+            self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 4]
         elif self.set == 'validation':
-            self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 8]
-            # self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 0]
+            # self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 8]
+            self.sequences = ['{:02d}'.format(i) for i in range(11) if i == 4]
         elif self.set == 'test':
             self.sequences = ['{:02d}'.format(i) for i in range(11, 22)]
         else:
@@ -383,6 +385,7 @@ class SemanticKittiDataset(PointCloudDataset):
 
                 if self.set in ['validation', 'test'] and self.config.n_test_frames > 1 and f_inc > 0:
                     test_path = join('test', self.config.saving_path.split('/')[-1] + str(self.config.n_test_frames))
+                    test_path = hydra.utils.to_absolute_path(test_path)
                     if self.set == 'validation':
                         test_path = join(test_path, 'val_probs')
                     else:
@@ -569,7 +572,7 @@ class SemanticKittiDataset(PointCloudDataset):
             # exit()
             if self.set in ['validation', 'test']:
                 # Data augmentation
-                in_pts, scale, R = self.augmentation_transform(in_pts)
+                in_pts, scale, R = self.augmentation_transform(in_pts) # TSY: passed rotated points to in_pts
             else:
                 in_pts, scale, R = self.augmentation_transform(in_pts)
 
