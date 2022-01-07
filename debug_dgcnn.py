@@ -2,7 +2,6 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
-from torchmetrics import JaccardIndex
 
 import os
 import numpy as np

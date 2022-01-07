@@ -321,7 +321,7 @@ class ModelTrainerDGCNN:
                                                   t[-1] - t0))
 
                 self.step += 1
-                break
+                
             # Update epoch
             self.epoch += 1
 
