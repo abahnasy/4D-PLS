@@ -116,10 +116,10 @@ def associate_instances_overlapping_frames(previous_ins_label, current_ins_label
     return association_costs_matched,  associations
 
 def main(FLAGS):
-    data_cfg = 'data/SemanticKitti/semantic-kitti.yaml'
+    data_cfg = 'data/semantic-kitti.yaml'
     DATA = yaml.safe_load(open(data_cfg, 'r'))
     split = 'valid'
-    dataset = 'data/SemanticKitti'
+    dataset = 'data'
 
     prediction_dir =  FLAGS.predictions
     if split == 'valid':
@@ -178,6 +178,7 @@ def main(FLAGS):
     poses = []
 
     test_sequences = FLAGS.sequences
+    test_sequences= [4] #AB: TODO: fix
 
     for sequence in test_sequences:
         calib = parse_calibration(os.path.join(dataset, "sequences", '{0:02d}'.format(sequence), "calib.txt"))

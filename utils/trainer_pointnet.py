@@ -33,6 +33,7 @@ from os import makedirs, remove
 from os.path import exists, join
 import time
 import sys
+from models.losses import isnan
 from utils.debugging import d_print
 
 # PLY reader
@@ -53,7 +54,7 @@ from models.blocks import KPConv
 #
 
 
-class ModelTrainer:
+class ModelTrainerPointNet:
 
     # Initialization methods
     # ------------------------------------------------------------------------------------------------------------------
@@ -69,7 +70,7 @@ class ModelTrainer:
         """
 
         # Writer will output to ./runs/ directory by default
-        self.logger = SummaryWriter()
+        self.logger = SummaryWriter(log_dir="pointnet")
         self.global_step = 0
         ############
         # Parameters
@@ -81,13 +82,14 @@ class ModelTrainer:
 
         var_params = [v for k, v in net.named_parameters() if 'head_var' in k]
         # Optimizer with specific learning rate for deformable KPConv
-        deform_params = [v for k, v in net.named_parameters() if 'offset' in k and not 'head_var' in k]
+        # deform_params = [v for k, v in net.named_parameters() if 'offset' in k and not 'head_var' in k]
         other_params = [v for k, v in net.named_parameters() if 'offset' not in k and not 'head_var' in k]
-        deform_lr = config.learning_rate * config.deform_lr_factor
+        # deform_lr = config.learning_rate * config.deform_lr_factor
         var_lr =  1e-3
         self.optimizer = torch.optim.SGD([{'params': other_params},
                                           {'params': var_params, 'lr': var_lr},
-                                          {'params': deform_params, 'lr': deform_lr}],
+                                        #   {'params': deform_params, 'lr': deform_lr},
+                                          ],
                                          lr=config.learning_rate,
                                          momentum=config.momentum,
                                          weight_decay=config.weight_decay)
@@ -104,53 +106,53 @@ class ModelTrainer:
         # Load previous checkpoint
         ##########################
 
-        if (chkp_path is not None):
-            if finetune:
-                checkpoint = torch.load(chkp_path)
-                if checkpoint['model_state_dict']['head_var.mlp.weight'].shape[0] == \
-                        checkpoint['model_state_dict']['head_var.mlp.weight'].shape[1] and config.free_dim != 0:
-                    checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
-                    checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
+        # if (chkp_path is not None):
+        #     if finetune:
+        #         checkpoint = torch.load(chkp_path)
+        #         if checkpoint['model_state_dict']['head_var.mlp.weight'].shape[0] == \
+        #                 checkpoint['model_state_dict']['head_var.mlp.weight'].shape[1] and config.free_dim != 0:
+        #             checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
+        #             checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
 
-                if checkpoint['model_state_dict']['head_var.mlp.weight'].shape[0] -  \
-                    checkpoint['model_state_dict']['head_var.mlp.weight'].shape[1] != config.free_dim:
-                    checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
-                    checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
+        #         if checkpoint['model_state_dict']['head_var.mlp.weight'].shape[0] -  \
+        #             checkpoint['model_state_dict']['head_var.mlp.weight'].shape[1] != config.free_dim:
+        #             checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
+        #             checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
 
-                if checkpoint['model_state_dict']['head_var.mlp.weight'].shape[0] != net.head_var.mlp.weight.shape[0] \
-                        or checkpoint['model_state_dict']['head_var.mlp.weight'].shape[1] !=net.head_var.mlp.weight.shape[1]:
-                    checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
-                    checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
+        #         if checkpoint['model_state_dict']['head_var.mlp.weight'].shape[0] != net.head_var.mlp.weight.shape[0] \
+        #                 or checkpoint['model_state_dict']['head_var.mlp.weight'].shape[1] !=net.head_var.mlp.weight.shape[1]:
+        #             checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
+        #             checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
 
-                if config.reinit_var:
-                    checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
-                    checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
+        #         if config.reinit_var:
+        #             checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
+        #             checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
 
-                net.load_state_dict(checkpoint['model_state_dict'])
-                net.train()
-                print("Model restored and ready for finetuning.")
-            else:
-                checkpoint = torch.load(chkp_path)
-                if config.reinit_var:
-                    checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
-                    checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
-                if not config.reinit_var:
-                    self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                net.load_state_dict(checkpoint['model_state_dict'])
-                self.epoch = checkpoint['epoch']
-                net.train()
-                print("Model and training state restored.")
+        #         net.load_state_dict(checkpoint['model_state_dict'])
+        #         net.train()
+        #         print("Model restored and ready for finetuning.")
+        #     else:
+        #         checkpoint = torch.load(chkp_path)
+        #         if config.reinit_var:
+        #             checkpoint['model_state_dict']['head_var.mlp.weight'] = net.head_var.mlp.weight
+        #             checkpoint['model_state_dict']['head_var.batch_norm.bias'] = net.head_var.batch_norm.bias
+        #         if not config.reinit_var:
+        #             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        #         net.load_state_dict(checkpoint['model_state_dict'])
+        #         self.epoch = checkpoint['epoch']
+        #         net.train()
+        #         print("Model and training state restored.")
 
 
         # Path of the result folder
-        if config.saving:
-            if config.saving_path is None:
-                config.saving_path = time.strftime('results/Log_%Y-%m-%d_%H-%M-%S', time.gmtime())
-            if not exists(config.saving_path):
-                makedirs(config.saving_path)
-            config.save()
+        # if config.saving:
+        #     if config.saving_path is None:
+        #         config.saving_path = time.strftime('results/Log_%Y-%m-%d_%H-%M-%S', time.gmtime())
+        #     if not exists(config.saving_path):
+        #         makedirs(config.saving_path)
+        #     config.save()
 
-        return
+        # return
 
     # Training main method
     # ------------------------------------------------------------------------------------------------------------------
@@ -159,29 +161,29 @@ class ModelTrainer:
         """
         Train the model on a particular dataset.
         """
-
+        net.train()
         ################
         # Initialization
         ################
 
-        if config.saving:
-            # Training log file
-            with open(join(config.saving_path, 'training.txt'), "w") as file:
-                file.write('epochs steps out_loss offset_loss train_accuracy time\n')
+        # if config.saving:
+        #     # Training log file
+        #     with open(join(config.saving_path, 'training.txt'), "w") as file:
+        #         file.write('epochs steps out_loss offset_loss train_accuracy time\n')
 
-            # Killing file (simply delete this file when you want to stop the training)
-            PID_file = join(config.saving_path, 'running_PID.txt')
-            if not exists(PID_file):
-                with open(PID_file, "w") as file:
-                    file.write('Launched with PyCharm')
+        #     # Killing file (simply delete this file when you want to stop the training)
+        #     PID_file = join(config.saving_path, 'running_PID.txt')
+        #     if not exists(PID_file):
+        #         with open(PID_file, "w") as file:
+        #             file.write('Launched with PyCharm')
 
-            # Checkpoints directory
-            checkpoint_directory = join(config.saving_path, 'checkpoints')
-            if not exists(checkpoint_directory):
-                makedirs(checkpoint_directory)
-        else:
-            checkpoint_directory = None
-            PID_file = None
+        #     # Checkpoints directory
+        #     checkpoint_directory = join(config.saving_path, 'checkpoints')
+        #     if not exists(checkpoint_directory):
+        #         makedirs(checkpoint_directory)
+        # else:
+        #     checkpoint_directory = None
+        #     PID_file = None
 
         # Loop variables
         t0 = time.time()
@@ -192,58 +194,54 @@ class ModelTrainer:
 
         # Start training loop
         for epoch in range(config.max_epoch):
-
-            # Remove File for kill signal
-            if epoch == config.max_epoch - 1 and exists(PID_file):
-                remove(PID_file)
-
             self.step = 0
-            for batch in training_loader:
-                # Check kill signal (running_PID.txt deleted)
-                if config.saving and not exists(PID_file):
-                    continue
-
-                ##################
-                # Processing batch
-                ##################
-
-                # New time
-                t = t[-1:]
-                t += [time.time()]
-
+            for batch in training_loader: 
+                # move to device (GPU)
+                sample_gpu ={}
                 if 'cuda' in self.device.type:
-                    batch.to(self.device)
-
+                    for k, v in batch.items():
+                        sample_gpu[k] = v.to(self.device)
                 # zero the parameter gradients
                 self.optimizer.zero_grad()
-
+                # extract data used in loss functions 
+                # split centers and times -> original feats composition [x,y,z,r,c1,c2,c3,objectness,time]
+                centers = sample_gpu['in_fts'][:,:,4:8]
+                times = sample_gpu['in_fts'][:,:,8]
+                # prepare inputs for PointNet Architecture
+                sample_gpu['in_fts'] = sample_gpu['in_fts'].transpose(2,1)
                 # Forward pass
-                outputs, centers_output, var_output, embedding = net(batch, config)
-                # d_print("shape of the backbone outputs")
-                # d_print("outputs {}".format(outputs.shape))
-                # d_print("centers_output {}".format(centers_output.shape))
-                # d_print("var_output {}".format(var_output.shape))
-                # d_print("embedding {}".format(embedding.shape))
-                loss = net.loss(outputs, centers_output, var_output, embedding, batch.labels, batch.ins_labels,
-                                batch.centers, batch.points, batch.times.unsqueeze(1))
-                acc = net.accuracy(outputs, batch.labels)
+                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'])
+                # getting loss 
+                loss = net.loss(
+                    outputs, centers_output, var_output, embedding, 
+                    sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)
+                    
+                
+                acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+                
+                ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+                nan_idx = torch.isnan(ious)
+                ious[nan_idx] = 0.
 
-                # ious = net.semantic_seg_metric(outputs, batch.labels)
-
-                # for i, iou in enumerate(ious):
-                    # self.logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                for i, iou in enumerate(ious):
+                    if isnan(iou):
+                        iou = 0.
+                    self.logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                # self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
                 #AB: log into tensorbaord
                 self.logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                self.logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
                 self.logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                self.logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
                 self.logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
                 self.logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
                 self.logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
+                
                 self.logger.add_scalar('acc/train', acc*100, self.global_step)
                 self.global_step += 1
 
-                t += [time.time()]
+                # t += [time.time()]
 
                 # Backward + optimize
                 loss.backward()
@@ -254,39 +252,40 @@ class ModelTrainer:
                 self.optimizer.step()
                 torch.cuda.synchronize(self.device)
 
-                t += [time.time()]
+                # t += [time.time()]
 
-                # Average timing
-                if self.step < 2:
-                    mean_dt = np.array(t[1:]) - np.array(t[:-1])
-                else:
-                    mean_dt = 0.9 * mean_dt + 0.1 * (np.array(t[1:]) - np.array(t[:-1]))
+                # # Average timing
+                # if self.step < 2:
+                #     mean_dt = np.array(t[1:]) - np.array(t[:-1])
+                # else:
+                #     mean_dt = 0.9 * mean_dt + 0.1 * (np.array(t[1:]) - np.array(t[:-1]))
 
                 # Console display (only one per second)
-                if (t[-1] - last_display) > 1.0:
-                    last_display = t[-1]
-                    message = 'e{:03d}-i{:04d} => L={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} L_VL2={:.3f} acc={:3.0f}% / t(ms): {:5.1f} {:5.1f} {:5.1f})'
-                    print(message.format(self.epoch, self.step,
+                # if (t[-1] - last_display) > 1.0:
+                    # last_display = t[-1]
+                message = 'e{:03d}-i{:04d} => L={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} L_VL2={:.3f} acc={:3.0f}'
+                print(message.format(self.epoch, self.step,
                                          loss.item(),
                                          net.center_loss.item(),
                                          net.instance_loss.item(),
                                          net.variance_loss.item(),
                                          net.variance_l2.item(),
                                          100 * acc,
-                                         1000 * mean_dt[0],
-                                         1000 * mean_dt[1],
-                                         1000 * mean_dt[2]))
+                                        #  1000 * mean_dt[0],
+                                        #  1000 * mean_dt[1],
+                                        #  1000 * mean_dt[2]
+                                         ))
 
                 # Log file
-                if config.saving:
-                    with open(join(config.saving_path, 'training.txt'), "a") as file:
-                        message = '{:d} {:d} {:.3f} {:.3f} {:.3f} {:.3f}\n'
-                        file.write(message.format(self.epoch,
-                                                  self.step,
-                                                  net.output_loss,
-                                                  net.reg_loss,
-                                                  acc,
-                                                  t[-1] - t0))
+                # if config.saving:
+                #     with open(join(config.saving_path, 'training.txt'), "a") as file:
+                #         message = '{:d} {:d} {:.3f} {:.3f} {:.3f} {:.3f}\n'
+                #         file.write(message.format(self.epoch,
+                #                                   self.step,
+                #                                   net.output_loss,
+                #                                   net.reg_loss,
+                #                                   acc,
+                #                                   t[-1] - t0))
 
                 self.step += 1
 
@@ -295,41 +294,41 @@ class ModelTrainer:
             ##############
 
             # Check kill signal (running_PID.txt deleted)
-            if config.saving and not exists(PID_file):
-                break
+            # if config.saving and not exists(PID_file):
+            #     break
 
             # Update learning rate
-            if self.epoch in config.lr_decays:
-                for param_group in self.optimizer.param_groups:
-                    param_group['lr'] *= config.lr_decays[self.epoch]
+            # if self.epoch in config.lr_decays:
+            #     for param_group in self.optimizer.param_groups:
+            #         param_group['lr'] *= config.lr_decays[self.epoch]
 
             # Update epoch
             self.epoch += 1
 
             # Saving
-            if config.saving:
-                # Get current state dict
-                save_dict = {'epoch': self.epoch,
-                             'model_state_dict': net.state_dict(),
-                             'optimizer_state_dict': self.optimizer.state_dict(),
-                             'saving_path': config.saving_path}
+            # if config.saving:
+            #     # Get current state dict
+            #     save_dict = {'epoch': self.epoch,
+            #                  'model_state_dict': net.state_dict(),
+            #                  'optimizer_state_dict': self.optimizer.state_dict(),
+            #                  'saving_path': config.saving_path}
 
-                # Save current state of the network (for restoring purposes)
-                checkpoint_path = join(checkpoint_directory, 'current_chkp.tar')
-                torch.save(save_dict, checkpoint_path)
+            #     # Save current state of the network (for restoring purposes)
+            #     checkpoint_path = join(checkpoint_directory, 'current_chkp.tar')
+            #     torch.save(save_dict, checkpoint_path)
 
-                # Save checkpoints occasionally
-                if (self.epoch + 1) % config.checkpoint_gap == 0:
-                    checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
-                    torch.save(save_dict, checkpoint_path)
+            #     # Save checkpoints occasionally
+            #     if (self.epoch + 1) % config.checkpoint_gap == 0:
+            #         checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
+            #         torch.save(save_dict, checkpoint_path)
 
 
-            if epoch % 40 == 0:
-                # Validation
-                net.eval()
-                self.optimizer.zero_grad()
-                self.validation(net, val_loader, config)
-                net.train()
+            # if epoch % 40 == 0:
+            #     # Validation
+            #     net.eval()
+            #     self.optimizer.zero_grad()
+            #     self.validation(net, val_loader, config)
+            #     net.train()
 
         print('Finished Training')
         return

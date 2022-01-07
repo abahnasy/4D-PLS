@@ -3,7 +3,13 @@
 *.o
 *.ipynb
 *.npy
+ngrok
+*.zip
 
 /results
 /test
 /data
+/runs
+/outputs
+/notebooks
+/output
