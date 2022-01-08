@@ -2,11 +2,9 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
-from torchmetrics import JaccardIndex
 
 import os
 import numpy as np
-
 
 from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 from models.dgcnn_sem_seg import DGCNN_semseg
@@ -34,12 +32,12 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=1, pin_memory=True)
     
-    lr=0.1
+    #lr=0.1
 
     net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=9)
-    optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
+    #optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     
-    samples = train_set[0]
+    #samples = train_set[0]
     # print(samples['in_pts'].shape)
     # print(samples['in_fts'].shape)
     # print(samples['in_lbls'].shape)

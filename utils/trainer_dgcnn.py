@@ -284,7 +284,7 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
-                #torch.cuda.synchronize(self.device)
+                torch.cuda.synchronize(self.device)
 
                 t += [time.time()]
 
@@ -321,7 +321,7 @@ class ModelTrainerDGCNN:
                                                   t[-1] - t0))
 
                 self.step += 1
-                break
+                
             # Update epoch
             self.epoch += 1
 
