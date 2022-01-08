@@ -45,7 +45,7 @@ def get_graph_feature(x, k=20, idx=None, dim3=False): # x: (batch_size, features
             idx = knn(x, k=k)   # idx: (batch_size, num_points, k)
         else:
             idx = knn(x[:, :3, :], k=k) # Need to check the dimensions of data given by the dataloader
-    if torch.cuda.is_available(): 
+    if x.is_cuda: 
         device = torch.device('cuda')  
     else:
         device = torch.device('cpu')
@@ -74,7 +74,7 @@ class DGCNN_semseg(nn.Module):
         lbl_values,
         ign_lbls,
         pretrained=False,
-        input_feature_dims=9, # number of input feature deminsions
+        input_feature_dims=4, # number of input feature deminsions
         first_features_dim=256, # output dimension
         free_dim=4,
         k=20, # number of KNN neighbors

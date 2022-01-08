@@ -36,6 +36,6 @@ if __name__ == '__main__':
     config = Config()
     config.learning_rate = 0.1
     #config.saving_path = './results/dgcnn'
-    #config.checkpoint_gap = 1
+    config.checkpoint_gap = 50
     trainer = ModelTrainerDGCNN(net, config)
     trainer.train(net, train_loader, val_loader, config)

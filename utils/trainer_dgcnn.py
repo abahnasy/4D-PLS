@@ -46,17 +46,46 @@ class ModelTrainerDGCNN:
 
         # Choose to train on CPU or GPU
         if on_gpu and torch.cuda.is_available():
+            print('On GPU')
             self.device = torch.device("cuda:0")
         else:
+            print('On CPU')
             self.device = torch.device("cpu")
-        net.to(self.device)
+        
 
         ##########################
         # Load previous checkpoint
         ##########################
+        load_dgcnn_weights = True
+        load_heads = True
 
-        # TODO: 
+        if (chkp_path is not None):
+            if load_dgcnn_weights: 
+                pretrained_dgcnn = torch.load(chkp_path)
+                # Rename the pretrained model for loading
+                renamed_parameters = {}
+                for key, value in pretrained_dgcnn.items():
+                    not_loading = ['conv1', 'conv8', 'bn1', 'bn8', 'conv9']
+                    if not any(layer in key for layer in not_loading):
+                        print(key[7:12])
+                        renamed_parameters[key[7:]] = value
+                net.load_state_dict(renamed_parameters, strict=False)
+                print('dgcnn pretrained weights loaded.')
 
+            if load_heads:
+                chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
+                checkpoint_heads = torch.load(chkp_path_kpconv)
+                net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
+                print('kpconv decoder heads pretrained weights loaded.')
+            
+            # print(pretrained_dgcnn['module.conv5.0.weight'][:5,0,0])
+            # print(net.conv5[0].weight[:5,0,0])         
+            # print(pretrained_dgcnn['module.conv1.0.weight'][:5,0,0])
+            # print(net.conv1[0].weight[:5,0,0])         
+            # print(checkpoint_heads['model_state_dict']['head_var.mlp.weight'][:5,0])
+            # print(net.head_var.mlp.weight[:5,0])
+
+        net.to(self.device)   
 
          # Path of the result folder
         if config.saving:
@@ -90,7 +119,7 @@ class ModelTrainerDGCNN:
             else:
                 sample_gpu = batch
 
-            in_fts = sample_gpu['in_fts']
+            in_fts = sample_gpu['in_fts'][:4]
             labels = sample_gpu['in_lbls'].type(torch.LongTensor)
 
             for epoch in range(epochs):
@@ -141,7 +170,7 @@ class ModelTrainerDGCNN:
             for epoch in range(epochs):
                 
                 self.optimizer.zero_grad()
-                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'])
+                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:4])
 
                 loss = net.loss(
                     outputs, centers_output, var_output, embedding, 
@@ -222,7 +251,7 @@ class ModelTrainerDGCNN:
 
             self.step = 0
             for batch in training_loader:
-
+                
                 # New time
                 t = t[-1:]
                 t += [time.time()]
@@ -234,7 +263,6 @@ class ModelTrainerDGCNN:
                         sample_gpu[k] = v.to(self.device)
                 else:
                     sample_gpu = batch
-
                 # zero the parameter gradients
                 self.optimizer.zero_grad()
 
@@ -243,7 +271,7 @@ class ModelTrainerDGCNN:
                 centers = sample_gpu['in_fts'][:,:,4:8]
                 times = sample_gpu['in_fts'][:,:,8]
                 # Forward pass
-                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'])
+                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:4])
                 # getting loss 
                 loss = net.loss(
                     outputs, centers_output, var_output, embedding, 
