@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+ #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 @Author: An Tao, Pengliang Ji
@@ -16,13 +16,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
-from torch.utils.data import DataLoader
+from data import S3DIS
+from model import DGCNN_semseg
 import numpy as np
+from torch.utils.data import DataLoader
+from util import cal_loss, IOStream
 import sklearn.metrics as metrics
 from plyfile import PlyData, PlyElement
-
-from model import DGCNN_semseg
-from util import cal_loss, IOStream
 
 global room_seg
 room_seg = []

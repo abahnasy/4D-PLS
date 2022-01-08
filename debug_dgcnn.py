@@ -67,10 +67,16 @@ if __name__ == '__main__':
 
     config = Config()
     config.learning_rate = 0.1
+
     #config.saving_path = './results/dgcnn'
     config.checkpoint_gap = 1
-    trainer = ModelTrainerDGCNN(net, config)
-    # trainer.train_overfit_4D(net, optimizer, train_loader, epochs=1000)
 
+    # trainer = ModelTrainerDGCNN(net, config, on_gpu=False)
+    # trainer.train_overfit_4D(net, train_loader, epochs=1000)
+    # trainer.train(net, train_loader, val_loader, config)
+    
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    trainer = ModelTrainerDGCNN(net, config, chkp_path, on_gpu=False)
+    trainer.train_overfit_4D(net, train_loader, epochs=1000)
 
-    trainer.train(net, train_loader, val_loader, config)
+    # trainer.train(net, train_loader, val_loader, config)
