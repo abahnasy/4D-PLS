@@ -37,5 +37,13 @@ if __name__ == '__main__':
     config.learning_rate = 0.1
     #config.saving_path = './results/dgcnn'
     config.checkpoint_gap = 50
-    trainer = ModelTrainerDGCNN(net, config)
+
+    # Training from scratch
+    # trainer = ModelTrainerDGCNN(net, config)
+    # trainer.train(net, train_loader, val_loader, config)
+
+
+    # Training with pretrained weights
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
     trainer.train(net, train_loader, val_loader, config)

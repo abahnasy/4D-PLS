@@ -56,8 +56,9 @@ class ModelTrainerDGCNN:
         ##########################
         # Load previous checkpoint
         ##########################
-        load_dgcnn_weights = True
-        load_heads = True
+        if finetune==True:
+            load_dgcnn_weights = True
+            load_heads = True
 
         if (chkp_path is not None):
             if load_dgcnn_weights: 
@@ -67,7 +68,6 @@ class ModelTrainerDGCNN:
                 for key, value in pretrained_dgcnn.items():
                     not_loading = ['conv1', 'conv8', 'bn1', 'bn8', 'conv9']
                     if not any(layer in key for layer in not_loading):
-                        print(key[7:12])
                         renamed_parameters[key[7:]] = value
                 net.load_state_dict(renamed_parameters, strict=False)
                 print('dgcnn pretrained weights loaded.')
@@ -150,7 +150,23 @@ class ModelTrainerDGCNN:
             
             break
     
-    def train_overfit_4D(self, net, train_loader, epochs=1000):
+    def train_overfit_4D(self, net, train_loader, config):
+        ################
+        # Initialization
+        ################
+
+        if config.saving:
+            # Training log file
+            with open(join(config.saving_path, 'training.txt'), "w") as file:
+                file.write('epochs steps out_loss offset_loss train_accuracy time\n')
+
+            # Checkpoints directory
+            checkpoint_directory = join(config.saving_path, 'checkpoints')
+            if not exists(checkpoint_directory):
+                makedirs(checkpoint_directory)
+        else:
+            checkpoint_directory = None
+
         net.train()
         
         # Overfit one batch:
@@ -167,7 +183,7 @@ class ModelTrainerDGCNN:
             centers = sample_gpu['in_fts'][:,:,4:8]
             times = sample_gpu['in_fts'][:,:,8]
 
-            for epoch in range(epochs):
+            for epoch in range(config.max_epoch):
                 
                 self.optimizer.zero_grad()
                 outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:4])
@@ -182,7 +198,11 @@ class ModelTrainerDGCNN:
                 ious[nan_idx] = 0.
 
                 loss.backward()
+                if config.grad_clip_norm > 0:
+                    # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
+                    torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
+                torch.cuda.synchronize(self.device)
 
                 for i, iou in enumerate(ious):
                     if isnan(iou):
@@ -201,8 +221,30 @@ class ModelTrainerDGCNN:
                 self.logger.add_scalar('acc/train', acc*100, self.global_step)
                 
                 print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
-            
+
+                # Log file
+                if config.saving:
+                    with open(join(config.saving_path, 'training.txt'), "a") as file:
+                        file.write('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(self.global_step, loss.item(), ious.mean(), acc*100))
+
                 self.global_step += 1
+
+                # Saving
+                if config.saving:
+                    # Get current state dict
+                    save_dict = {'epoch': self.epoch,
+                                'model_state_dict': net.state_dict(),
+                                'optimizer_state_dict': self.optimizer.state_dict(),
+                                'saving_path': config.saving_path}
+
+                    # Save current state of the network (for restoring purposes)
+                    checkpoint_path = join(checkpoint_directory, 'current_chkp.tar')
+                    torch.save(save_dict, checkpoint_path)
+
+                    # Save checkpoints occasionally
+                    if (self.epoch + 1) % config.checkpoint_gap == 0:
+                        checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
+                        torch.save(save_dict, checkpoint_path)
             
             break
 
@@ -220,12 +262,6 @@ class ModelTrainerDGCNN:
             # Training log file
             with open(join(config.saving_path, 'training.txt'), "w") as file:
                 file.write('epochs steps out_loss offset_loss train_accuracy time\n')
-
-            # # Killing file (simply delete this file when you want to stop the training)
-            # PID_file = join(config.saving_path, 'running_PID.txt')
-            # if not exists(PID_file):
-            #     with open(PID_file, "w") as file:
-            #         file.write('Launched with PyCharm')
 
             # Checkpoints directory
             checkpoint_directory = join(config.saving_path, 'checkpoints')
@@ -312,7 +348,7 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
-                #torch.cuda.synchronize(self.device)
+                torch.cuda.synchronize(self.device)
 
                 t += [time.time()]
 
