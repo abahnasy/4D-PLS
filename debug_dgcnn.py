@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import os
 import numpy as np
 
-
 from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 from models.dgcnn_sem_seg import DGCNN_semseg
 from utils.trainer_dgcnn import ModelTrainerDGCNN
@@ -72,16 +71,16 @@ if __name__ == '__main__':
     #config.saving_path = './results/dgcnn'
     config.checkpoint_gap = 50
 
-
     # Training from scratch
-    # trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
-    # trainer.train_overfit_4D(net, train_loader)
+    trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
+    trainer.train_overfit_4D(net, train_loader, config)
     # trainer.train(net, train_loader, val_loader, config)
     
 
     # Pretrained weights of both dgcnn and loss heads
-    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    trainer = ModelTrainerDGCNN(net, config, chkp_path, on_gpu=True)
-    trainer.train_overfit_4D(net, train_loader, config)
+    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    # trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+    # trainer.train_overfit_4D(net, train_loader, config)
+
 
     # trainer.train(net, train_loader, val_loader, config)
