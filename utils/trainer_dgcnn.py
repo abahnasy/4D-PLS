@@ -119,7 +119,7 @@ class ModelTrainerDGCNN:
             else:
                 sample_gpu = batch
 
-            in_fts = sample_gpu['in_fts'][:4]
+            in_fts = sample_gpu['in_fts'][:,:,:4]
             labels = sample_gpu['in_lbls'].type(torch.LongTensor)
 
             for epoch in range(epochs):
@@ -150,6 +150,7 @@ class ModelTrainerDGCNN:
             
             break
     
+
     def train_overfit_4D(self, net, train_loader, config):
         ################
         # Initialization
@@ -186,7 +187,7 @@ class ModelTrainerDGCNN:
             for epoch in range(config.max_epoch):
                 
                 self.optimizer.zero_grad()
-                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:4])
+                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
 
                 loss = net.loss(
                     outputs, centers_output, var_output, embedding, 
@@ -249,7 +250,6 @@ class ModelTrainerDGCNN:
             break
 
 
-
     def train(self, net, training_loader, val_loader, config):
         """
         Train the model on a particular dataset.
@@ -307,7 +307,7 @@ class ModelTrainerDGCNN:
                 centers = sample_gpu['in_fts'][:,:,4:8]
                 times = sample_gpu['in_fts'][:,:,8]
                 # Forward pass
-                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:4])
+                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
                 # getting loss 
                 loss = net.loss(
                     outputs, centers_output, var_output, embedding, 

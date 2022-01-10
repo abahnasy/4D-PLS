@@ -31,7 +31,7 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=1, pin_memory=True)
     
-    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=9)
+    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
     
     config = Config()
     config.learning_rate = 0.1

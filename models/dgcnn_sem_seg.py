@@ -31,7 +31,7 @@ def knn(x, k):
     inner = -2*torch.matmul(x.transpose(2, 1), x)
     xx = torch.sum(x**2, dim=1, keepdim=True)
     pairwise_distance = -xx - inner - xx.transpose(2, 1)
-    idx = pairwise_distance.topk(k=k, dim=-1)[1]   # idx: (batch_size, num_points, k)
+    idx = pairwise_distance.topk(k=k, dim=-1)[1]   # idx: (batch_size, num_points, k)    indices of k nearest points in each point cloud
     return idx
 
 
@@ -52,9 +52,9 @@ def get_graph_feature(x, k=20, idx=None, dim3=False): # x: (batch_size, features
 
     idx_base = torch.arange(0, batch_size, device=device).view(-1, 1, 1)*num_points
 
-    idx = idx + idx_base
+    idx = idx + idx_base # number all points from 0 to batch_size*num_points
 
-    idx = idx.view(-1)
+    idx = idx.view(-1)  # (batch_size * num_points * k)
  
     _, num_dims, _ = x.size()
 
