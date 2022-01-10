@@ -34,7 +34,7 @@ if __name__ == '__main__':
     
     #lr=0.1
 
-    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=9)
+    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
     #optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     
     #samples = train_set[0]
@@ -67,16 +67,20 @@ if __name__ == '__main__':
 
     config = Config()
     config.learning_rate = 0.1
-
+    config.max_epoch = 100000
     #config.saving_path = './results/dgcnn'
-    config.checkpoint_gap = 1
+    config.checkpoint_gap = 50
 
-    # trainer = ModelTrainerDGCNN(net, config, on_gpu=False)
-    # trainer.train_overfit_4D(net, train_loader, epochs=1000)
+    # Training from scratch
+    # trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
+    # trainer.train_overfit_4D(net, train_loader, config)
+    
     # trainer.train(net, train_loader, val_loader, config)
     
+
+    # Pretrained weights of both dgcnn and loss heads
     chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    trainer = ModelTrainerDGCNN(net, config, chkp_path, on_gpu=False)
-    trainer.train_overfit_4D(net, train_loader, epochs=1000)
+    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+    trainer.train_overfit_4D(net, train_loader, config)
 
     # trainer.train(net, train_loader, val_loader, config)

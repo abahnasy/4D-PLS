@@ -31,11 +31,20 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=1, pin_memory=True)
     
-    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=9)
+    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
     
     config = Config()
     config.learning_rate = 0.1
     #config.saving_path = './results/dgcnn'
     config.checkpoint_gap = 50
-    trainer = ModelTrainerDGCNN(net, config)
+
+
+    # Training from scratch
+    trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
     trainer.train(net, train_loader, val_loader, config)
+
+
+    # Training with pretrained weights
+    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    # trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+    # trainer.train(net, train_loader, val_loader, config)
