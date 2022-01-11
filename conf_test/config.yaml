@@ -1,0 +1,5 @@
+chosen_log: results/Log_2020-10-06_16-51-05_30
+# rots: [30,30,30] #rotation angles around x,y , z
+rot_x: 0.
+rot_y: 0.
+rot_z: 0.

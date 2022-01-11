@@ -1,0 +1,33 @@
+train_dataset:
+  num_samples: 10
+  augmentation: 'aligned'
+val_dataset:
+  num_samples: 1
+  augmentation: 'z'
+model: 'VNDGCNN'
+train_loader:
+  shuffle: False
+  batch_size: 1
+  num_workers: 4
+  pin_memory: True
+val_loader:
+  shuffle: False
+  batch_size: 1
+  num_workers: 4
+  pin_memory: True
+trainer:
+  style: 'train' #opts: [overfit, train]
+  task: 'sem_seg' # options: ['pls', 'sem_seg']
+  learning_rate: 1e-2
+  lr_decays: #dynamic calculations
+  var_lr: 1e-1
+  momentum: 0.98
+  weight_decay: 0 #1e-3
+  lr_scheduler:
+    milestones: [3,10,20,100,200]
+    gamma: 0.5
+  free_dim: 4
+  # saving:
+  max_epoch: 300
+  grad_clip_norm: 100.0
+
