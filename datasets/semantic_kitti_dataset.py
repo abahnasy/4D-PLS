@@ -19,7 +19,9 @@ class SemanticKittiDataSet(Dataset):
         n_frames= 4, 
         sequential_batch = False, 
         balance_classes= False,
-        sampling = 'importance' # sampling for points in t-i frames
+        sampling = 'importance', # sampling for points in t-i frames
+        num_samples= 99999,
+        augmentation = 'aligned' # opt:[aligned, z,so3]
         ) -> None:
         """
         Args:
@@ -30,13 +32,17 @@ class SemanticKittiDataSet(Dataset):
         Returns: None
         """
         super().__init__()
+        # num of training samples
+        self.num_samples = num_samples
+        # rotation augmentation
+        self.augmentation = augmentation
         # Dataset folder
         self.path = hydra.utils.to_absolute_path(path)
         # train or test set
         self.set = set
         # number of concatenated frames
         self.grid_subsampling = False
-        self.pointnet_size = 8192
+        self.pointnet_size = 1024*4 #TODO: move to config file
         self.n_frames = n_frames
         self.sampling = sampling
         self.n_test_frames = 4
@@ -64,6 +70,10 @@ class SemanticKittiDataSet(Dataset):
         seq_inds = np.hstack([np.ones(len(_), dtype=np.int32) * i for i, _ in enumerate(self.frames)])
         frame_inds = np.hstack([np.arange(len(_), dtype=np.int32) for _ in self.frames])
         self.all_inds = np.vstack((seq_inds, frame_inds)).T
+        # choose the training samples
+        self.num_samples = min(self.num_samples, self.all_inds.shape[0])
+        self.all_inds = self.all_inds[:self.num_samples]
+        d_print("Num of training samples is {}".format(self.all_inds.shape[0]))
 
         self.sequential_batch = sequential_batch
         
@@ -328,6 +338,23 @@ class SemanticKittiDataSet(Dataset):
         in_fts = in_fts[idxs]
         in_lbls = in_lbls[idxs]
         in_slbls = in_slbls[idxs]
+        # write_pc(in_fts[:,:3], './before_aug')
+        if self.augmentation == 'z':
+            rotation_options = np.array([i for i in range(0,60,5)], dtype=np.float32)
+            z_angle = np.random.choice(rotation_options)
+            in_fts[:,:3] = rotate(in_fts[:,:3], rot_z = z_angle)
+            d_print(z_angle)
+            # write_pc(in_fts[:,:3], 'after_aug_{}'.format(z_angle))
+        elif self.augmentation == 'so3':
+            rotation_options = np.array([i for i in range(0,30,5)], dtype=np.float32)
+            x_angle = np.random.choice(rotation_options)
+            y_angle = np.random.choice(rotation_options)
+            z_angle = np.random.choice(rotation_options)
+            in_fts[:,:3] = rotate(in_fts[:,:3], rot_x = x_angle, rot_y = y_angle, rot_z = z_angle)
+        else:
+            pass # no rotations
+
+        
 
     
         sample = {
@@ -339,4 +366,40 @@ class SemanticKittiDataSet(Dataset):
             'in_slbls': in_slbls # instance labels
         }
         return sample
+
+def rotate(in_pts, rot_x=0, rot_y=0, rot_z=0):
+    """angles: array of angles for x,y,z axes
+    """
+    c = np.cos(rot_x *np.pi / 180.)
+    s = np.sin(rot_x*np.pi / 180.)
+    x_rot_mat = np.array([
+        [1, 0,  0],
+        [0, c, -s],
+        [0, s,  c]
+        ], dtype=np.float32)
+    # d_print(x_rot_mat)
+    c = np.cos(rot_y*np.pi / 180.)
+    s = np.sin(rot_y*np.pi / 180.)
+    y_rot_mat = np.array(
+        [[c,  0,  s],
+            [0,  1,  0],
+        [-s, 0,  c]
+        ], dtype=np.float32)
+    # d_print(y_rot_mat)
+    c = np.cos(rot_z*np.pi / 180.)
+    s = np.sin(rot_z*np.pi / 180.)
+    z_rot_mat = np.array([
+        [c, -s,  0],
+        [s,  c,  0],
+        [0,  0,  1]
+        ], dtype=np.float32)
+    # d_print(z_rot_mat)
+    rot_mat = np.dot(z_rot_mat, y_rot_mat)
+    rot_mat = np.dot(rot_mat, x_rot_mat)
+
+    ctr = in_pts.mean(axis=0) 
+    in_pts = np.dot(in_pts-ctr, rot_mat) + ctr
+    return in_pts
+    # ctr = in_fts[:,:3].mean(axis = 0)
+    # in_fts[:,:3] = np.dot(in_fts[:,:3] - ctr, rot_mat) + ctr
 
