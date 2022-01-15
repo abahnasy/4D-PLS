@@ -63,7 +63,7 @@ class ModelTrainerDGCNN:
 
         if (chkp_path is not None):
             if load_dgcnn_weights: 
-                pretrained_dgcnn = torch.load(chkp_path)
+                pretrained_dgcnn = torch.load(chkp_path, map_location=self.device)
                 # Rename the pretrained model for loading
                 renamed_parameters = {}
                 for key, value in pretrained_dgcnn.items():
@@ -75,7 +75,7 @@ class ModelTrainerDGCNN:
 
             if load_heads:
                 chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
-                checkpoint_heads = torch.load(chkp_path_kpconv)
+                checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
                 net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
                 print('kpconv decoder heads pretrained weights loaded.')
             
@@ -208,7 +208,8 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
-                torch.cuda.synchronize(self.device)
+                if 'cuda' in self.device.type:
+                    torch.cuda.synchronize(self.device)
 
                 for i, iou in enumerate(ious):
                     if isnan(iou):

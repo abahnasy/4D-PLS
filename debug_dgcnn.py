@@ -10,7 +10,7 @@ from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 from models.dgcnn_sem_seg import DGCNN_semseg
 from utils.trainer_dgcnn import ModelTrainerDGCNN
 from utils.config import Config
-
+from models.dgcnn_utils import get_model_parameters
 
 
 
@@ -37,6 +37,9 @@ if __name__ == '__main__':
     net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
     #optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     
+    num_parameters = get_model_parameters(net)
+    print('Number of model parameters:', num_parameters)
+
     # samples = train_set[0]
     # print(samples['in_pts'].shape)
     # print(samples['in_fts'].shape)
@@ -79,9 +82,9 @@ if __name__ == '__main__':
     
 
     # Pretrained weights of both dgcnn and loss heads
-    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    # trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
-    # trainer.train_overfit_4D(net, train_loader, config)
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=False)
+    trainer.train_overfit_4D(net, train_loader, config)
 
     # trainer.train(net, train_loader, val_loader, config)
 
@@ -93,10 +96,7 @@ if __name__ == '__main__':
     #     print(rotated_pc[0,0,:])
         
     #     break
-       
-    # Training from scratch
-    # trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
-    # trainer.train_overfit_4D(net, train_loader, config)
+
     
     # Evaluation
     # from utils.trainer_dgcnn import evaluate_rotated
