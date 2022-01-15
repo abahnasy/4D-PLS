@@ -10,6 +10,7 @@ from os.path import exists, join
 import time
 import sys
 from models.losses import isnan
+from models.dgcnn_utils import rotate_pointcloud
 from utils.debugging import d_print
 
 # PLY reader
@@ -62,7 +63,7 @@ class ModelTrainerDGCNN:
 
         if (chkp_path is not None):
             if load_dgcnn_weights: 
-                pretrained_dgcnn = torch.load(chkp_path)
+                pretrained_dgcnn = torch.load(chkp_path, map_location=self.device)
                 # Rename the pretrained model for loading
                 renamed_parameters = {}
                 for key, value in pretrained_dgcnn.items():
@@ -74,7 +75,7 @@ class ModelTrainerDGCNN:
 
             if load_heads:
                 chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
-                checkpoint_heads = torch.load(chkp_path_kpconv)
+                checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
                 net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
                 print('kpconv decoder heads pretrained weights loaded.')
             
@@ -181,6 +182,10 @@ class ModelTrainerDGCNN:
             else:
                 sample_gpu = batch
 
+            # Save the batch used in this overfitting experiment
+            batch_path = join(checkpoint_directory, 'batch.tar')
+            torch.save(sample_gpu, batch_path)           
+
             centers = sample_gpu['in_fts'][:,:,4:8]
             times = sample_gpu['in_fts'][:,:,8]
 
@@ -203,7 +208,8 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
-                torch.cuda.synchronize(self.device)
+                if 'cuda' in self.device.type:
+                    torch.cuda.synchronize(self.device)
 
                 for i, iou in enumerate(ious):
                     if isnan(iou):
@@ -241,7 +247,7 @@ class ModelTrainerDGCNN:
                     # Save current state of the network (for restoring purposes)
                     checkpoint_path = join(checkpoint_directory, 'current_chkp.tar')
                     torch.save(save_dict, checkpoint_path)
-
+                    
                     # Save checkpoints occasionally
                     if (self.epoch + 1) % config.checkpoint_gap == 0:
                         checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
@@ -280,10 +286,6 @@ class ModelTrainerDGCNN:
         net.train()
         # Start training loop
         for epoch in range(config.max_epoch):
-
-            # # Remove File for kill signal
-            # if epoch == config.max_epoch - 1 and exists(PID_file):
-            #     remove(PID_file)
 
             self.step = 0
             for batch in training_loader:
@@ -348,7 +350,8 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
-                torch.cuda.synchronize(self.device)
+                if 'cuda' in self.device.type:
+                    torch.cuda.synchronize(self.device)
 
                 t += [time.time()]
 
@@ -407,6 +410,78 @@ class ModelTrainerDGCNN:
                     torch.save(save_dict, checkpoint_path)
 
 
+def evaluate_rotated(net, chkp_dir, config):
+    net.train()
+
+    chkp_path = join(chkp_dir, 'current_chkp.tar')
+    pretrained_model = torch.load(chkp_path)
+    net.load_state_dict(pretrained_model['model_state_dict'])
+
+    batch_path = join(chkp_dir, 'batch.tar')
+    batch = torch.load(batch_path)
+
+    # move to device 
+    net.to('cpu')
+    sample_gpu ={}
+    for k, v in batch.items():
+        sample_gpu[k] = v.to('cpu')
+
+    centers = sample_gpu['in_fts'][:,:,4:8]
+    times = sample_gpu['in_fts'][:,:,8]
+
+    if config.angle_z==0:
+        # Evaluate on original pointcloud
+        outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
+        loss = net.loss(
+                outputs, centers_output, var_output, embedding, 
+                sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+        acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+        ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+        nan_idx = torch.isnan(ious)
+        ious[nan_idx] = 0.
+
+        if config.saving:
+            # Evaluation log file
+            with open(join(chkp_dir, 'evaluation.txt'), "a") as file:
+                file.write('\n')
+                file.write('Original pointclouds: loss:{0:2.3f}, iou_mean:{1:2.3f}, accuracy:{2:.3f}%\n'.format(loss.item(), ious.mean(), 100*acc))
+                # for i, iou in enumerate(ious):
+                #     if isnan(iou):
+                #         iou = 0.
+                #     file.write('ious/{0}: {1:2.3f}\n'.format(i, iou))
+                file.write('\n')
+
+    else:
+        # Evaluate on rotated pointcloud
+        rotated_pc = rotate_pointcloud(config, sample_gpu['in_pts'], angle_range_z=config.angle_z)
+        rotated_sample = sample_gpu['in_fts'][:,:,:4].contiguous()
+        rotated_sample[:,:,:3] = torch.tensor(rotated_pc)
+        # print(sample_gpu['in_fts'][0,0,:4])
+        # print(rotated_sample[0,0,:4])
+        # print(sample_gpu['in_pts'][0,0,:])
+        # print(rotated_pc[0,0,:])
+
+        outputs, centers_output, var_output, embedding = net(rotated_sample)
+        loss = net.loss(
+                outputs, centers_output, var_output, embedding, 
+                sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+        acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+        ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())               
+        nan_idx = torch.isnan(ious)
+        ious[nan_idx] = 0.
+
+        if config.saving:
+            # Evaluation log file
+            with open(join(chkp_dir, 'evaluation.txt'), 'a') as file:
+                file.write('Rotate: {0}, Angle: {1}\n'.format(config.eval_rotation, config.angle_z))
+                file.write('Rotated pointclouds: loss:{0:2.3f}, iou_mean:{1:2.3f}, accuracy:{2:.3f}%\n'.format(loss.item(), ious.mean(), 100*acc))
+                # for i, iou in enumerate(ious):
+                #     if isnan(iou):
+                #         iou = 0.
+                #     file.write('ious/{0}: {1:2.3f}\n'.format(i, iou))
+                file.write('\n')
+    print('Rotate: {0}, Angle: {1}'.format(config.eval_rotation, config.angle_z))
+    print('loss:{0:2.3f}, iou_mean:{1:2.3f}, accuracy:{2:.3f}%'.format(loss.item(), ious.mean(), 100*acc))
 
 
 

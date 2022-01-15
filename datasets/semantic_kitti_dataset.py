@@ -36,7 +36,7 @@ class SemanticKittiDataSet(Dataset):
         self.set = set
         # number of concatenated frames
         self.grid_subsampling = False
-        self.pointnet_size = 8192
+        self.pointnet_size = 4096 #8192
         self.n_frames = n_frames
         self.sampling = sampling
         self.n_test_frames = 4
