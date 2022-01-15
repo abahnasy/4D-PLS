@@ -11,6 +11,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+from kernels.kernel_points import create_3D_rotations
 
 
 def cal_loss(pred, gold, smoothing=True):
@@ -44,3 +45,40 @@ class IOStream():
 
     def close(self):
         self.f.close()
+
+
+def rotate_pointcloud(config, points, angle_range_z=60):
+    ##########
+    # Rotation
+    ##########
+
+    # Initialize rotation matrix
+    R = np.eye(points.shape[1])
+
+    if points.shape[-1] == 3:
+        if config.eval_rotation == 'vertical':
+
+            # Create random rotations
+            theta = angle_range_z/360 * 2 * np.pi #* (2*np.random.rand()-1)   # a random angle within +/- angle_range_z
+            c, s = np.cos(theta), np.sin(theta)
+            R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=np.float32)
+
+        elif config.eval_rotation == 'all':
+            raise NotImplementedError
+
+            # Choose two random angles for the first vector in polar coordinates
+            theta = np.random.rand() * 2 * np.pi
+            phi = (np.random.rand() - 0.5) * np.pi
+
+            # Create the first vector in carthesian coordinates
+            u = np.array([np.cos(theta) * np.cos(phi), np.sin(theta) * np.cos(phi), np.sin(phi)])
+
+            # Choose a random rotation angle
+            alpha = np.random.rand() * 2 * np.pi
+
+            # Create the rotation matrix with this vector and angle
+            R = create_3D_rotations(np.reshape(u, (1, -1)), np.reshape(alpha, (1, -1)))[0]
+
+    R = R.astype(np.float32)
+    rotated_points = np.sum(np.expand_dims(points, points.ndim) * R, axis=-1)
+    return rotated_points
