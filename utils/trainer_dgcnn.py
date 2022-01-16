@@ -170,7 +170,7 @@ class ModelTrainerDGCNN:
             checkpoint_directory = None
 
         net.train()
-        
+
         # Overfit one batch:
         for batch in train_loader:
 
@@ -289,7 +289,6 @@ class ModelTrainerDGCNN:
 
             self.step = 0
             for batch in training_loader:
-                
                 # New time
                 t = t[-1:]
                 t += [time.time()]
@@ -388,6 +387,7 @@ class ModelTrainerDGCNN:
                                                   t[-1] - t0))
 
                 self.step += 1
+
                 
             # Update epoch
             self.epoch += 1

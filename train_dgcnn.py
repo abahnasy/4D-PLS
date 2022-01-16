@@ -1,3 +1,4 @@
+from random import shuffle
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -35,16 +36,18 @@ if __name__ == '__main__':
     
     config = Config()
     config.learning_rate = 0.1
-    #config.saving_path = './results/dgcnn'
+    config.saving_path = './results/dgcnn'
     config.checkpoint_gap = 50
+    config.max_epoch = 60
 
 
     # Training from scratch
-    trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
-    trainer.train(net, train_loader, val_loader, config)
+    # trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
+    # trainer.train(net, train_loader, val_loader, config)
 
 
     # Training with pretrained weights
-    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    # trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
-    # trainer.train(net, train_loader, val_loader, config)
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7' 
+    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+    trainer.train(net, train_loader, val_loader, config)
+

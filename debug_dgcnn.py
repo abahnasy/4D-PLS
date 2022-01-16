@@ -34,11 +34,12 @@ if __name__ == '__main__':
     
     #lr=0.1
 
-    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
+    # net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
     #optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     
-    num_parameters = get_model_parameters(net)
-    print('Number of model parameters:', num_parameters)
+    # Count number of model parameters
+    # num_parameters = get_model_parameters(net)
+    # print('Number of model parameters:', num_parameters)
 
     # samples = train_set[0]
     # print(samples['in_pts'].shape)
@@ -82,9 +83,9 @@ if __name__ == '__main__':
     
 
     # Pretrained weights of both dgcnn and loss heads
-    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=False)
-    trainer.train_overfit_4D(net, train_loader, config)
+    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    # trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+    # trainer.train_overfit_4D(net, train_loader, config)
 
     # trainer.train(net, train_loader, val_loader, config)
 
@@ -97,12 +98,26 @@ if __name__ == '__main__':
         
     #     break
 
+    # Learning rate search:
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7' 
+    config.max_epoch = 2000
+    lr_list = [1e-1, 1e-2, 1e-3, 1e-4]
+    for lr in lr_list:
+        config.learning_rate=lr
+        config.saving_path = './results/dgcnn/lr_search/'+str(lr)
+        net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
+        trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+        # trainer.train(net, train_loader, val_loader, config)
+        trainer.train_overfit_4D(net, train_loader, config)
+        
+
     
     # Evaluation
     # from utils.trainer_dgcnn import evaluate_rotated
     # config.eval_rotation = 'vertical'
-    # # chkp_dir = './results/dgcnn/Log_2022-01-12_09-56-47/checkpoints' 
-    # chkp_dir = './results/dgcnn/Log_2022-01-12_10-43-29/checkpoints' # pretrained weights
+    # # chkp_dir = './results/dgcnn/Log_2022-01-12_09-56-47/checkpoints'  # without STN layer
+    # # chkp_dir = './results/dgcnn/Log_2022-01-12_10-43-29/checkpoints' # without STN layer pretrained weights 
+    # chkp_dir = './results/dgcnn/Log_2022-01-15_13-56-01/checkpoints'
     # for angle in [0,60,30,15,5,-5,-15,-30,-60]:
     #     config.angle_z = angle
     #     evaluate_rotated(net, chkp_dir=chkp_dir, config=config)

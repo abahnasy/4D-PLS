@@ -203,6 +203,8 @@ class DGCNN_semseg(nn.Module):
         t_4 = torch.eye(4,4).repeat(batch_size,1,1)
         t_4[:,:3,:3] = t
         x = x.transpose(2, 1)                           # (batch_size, 3, num_points) -> (batch_size, num_points, 3)
+        if x.is_cuda:
+            t_4 = t_4.cuda()
         x = torch.bmm(x, t_4)                           # (batch_size, num_points, 3) * (batch_size, 3, 3) -> (batch_size, num_points, 3)
         x = x.transpose(2, 1)                           # (batch_size, num_points, 3) -> (batch_size, 3, num_points)
 
