@@ -69,6 +69,7 @@ if __name__ == '__main__':
     # print(loss)
 
     config = Config()
+    config.on_gpu = False
     config.learning_rate = 0.1
     config.max_epoch = 3000
     config.checkpoint_gap = 50
@@ -77,15 +78,16 @@ if __name__ == '__main__':
 
 
     # Training from scratch
-    # trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
+    # trainer = ModelTrainerDGCNN(net, config, on_gpu=config.on_gpu)
     # trainer.train_overfit_4D(net, train_loader, config)
     # trainer.train(net, train_loader, val_loader, config)
     
 
     # Pretrained weights of both dgcnn and loss heads
-    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
-    trainer.train_overfit_4D(net, train_loader, config)
+    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    # trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=config.on_gpu)
+    # trainer.train_overfit_4D(net, train_loader, config)
+
     # trainer.train(net, train_loader, val_loader, config)
 
 
@@ -102,7 +104,8 @@ if __name__ == '__main__':
     # config.eval_rotation = 'vertical'
     # # chkp_dir = './results/dgcnn/Log_2022-01-12_09-56-47/checkpoints'  # without STN layer
     # # chkp_dir = './results/dgcnn/Log_2022-01-12_10-43-29/checkpoints' # without STN layer pretrained weights 
-    # chkp_dir = './results/dgcnn/Log_2022-01-15_13-56-01/checkpoints'
+    # # chkp_dir = './results/dgcnn/Log_2022-01-15_13-56-01/checkpoints'  # with big STN layer
+    # chkp_dir = './results/dgcnn/lr_search_smallSTN/0.1/checkpoints'
     # for angle in [0,60,30,15,5,-5,-15,-30,-60]:
     #     config.angle_z = angle
     #     evaluate_rotated(net, chkp_dir=chkp_dir, config=config)
@@ -116,7 +119,7 @@ if __name__ == '__main__':
     #     config.learning_rate=lr
     #     config.saving_path = './results/dgcnn/lr_search/'+str(lr)
     #     net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
-    #     trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+    #     trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=config.on_gpu)
     #     # trainer.train(net, train_loader, val_loader, config)
     #     trainer.train_overfit_4D(net, train_loader, config)
     
