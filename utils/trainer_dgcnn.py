@@ -43,7 +43,9 @@ class ModelTrainerDGCNN:
         self.step = 0
 
         self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
-
+        if config.lr_scheduler == True:
+            milestones = [200, 600, 1000]
+            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.1, verbose=False)
 
         # Choose to train on CPU or GPU
         if on_gpu and torch.cuda.is_available():
@@ -208,6 +210,8 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
+                if config.lr_scheduler == True:        
+                    self.lr_scheduler.step()
                 if 'cuda' in self.device.type:
                     torch.cuda.synchronize(self.device)
 
@@ -350,6 +354,9 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
+                if config.lr_scheduler == True:        
+                    self.lr_scheduler.step()
+
                 if 'cuda' in self.device.type:
                     torch.cuda.synchronize(self.device)
 
@@ -412,13 +419,18 @@ class ModelTrainerDGCNN:
 
 def evaluate_rotated(net, chkp_dir, config):
     net.train()
-
+    if config.on_gpu and torch.cuda.is_available():
+        print('On GPU')
+        device = torch.device("cuda:0")
+    else:
+        print('On CPU')
+        device = torch.device("cpu")
     chkp_path = join(chkp_dir, 'current_chkp.tar')
-    pretrained_model = torch.load(chkp_path)
+    pretrained_model = torch.load(chkp_path, map_location=device)
     net.load_state_dict(pretrained_model['model_state_dict'])
 
     batch_path = join(chkp_dir, 'batch.tar')
-    batch = torch.load(batch_path)
+    batch = torch.load(batch_path, map_location=device)
 
     # move to device 
     net.to('cpu')
