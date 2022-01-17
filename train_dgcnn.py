@@ -47,7 +47,6 @@ if __name__ == '__main__':
 
 
     # Training with pretrained weights
-    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7' 
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
     trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
     trainer.train(net, train_loader, val_loader, config)
-
