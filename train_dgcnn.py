@@ -39,7 +39,7 @@ if __name__ == '__main__':
     config.saving_path = './results/dgcnn'
     config.checkpoint_gap = 50
     config.max_epoch = 60
-
+    config.lr_scheduler = False      # multistep scheduler: milestones=[200, 600, 1000], gamma=0.1
 
     # Training from scratch
     # trainer = ModelTrainerDGCNN(net, config, on_gpu=True)

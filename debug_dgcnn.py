@@ -34,12 +34,11 @@ if __name__ == '__main__':
     
     #lr=0.1
 
-    # net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
+    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
     #optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     
-    # Count number of model parameters
-    # num_parameters = get_model_parameters(net)
-    # print('Number of model parameters:', num_parameters)
+    num_parameters = get_model_parameters(net)
+    print('Number of model parameters:', num_parameters)
 
     # samples = train_set[0]
     # print(samples['in_pts'].shape)
@@ -71,22 +70,22 @@ if __name__ == '__main__':
 
     config = Config()
     config.learning_rate = 0.1
-    config.max_epoch = 1000
-    #config.saving_path = './results/dgcnn'
+    config.max_epoch = 3000
     config.checkpoint_gap = 50
+    config.lr_scheduler = False      # multistep scheduler: milestones=[200, 400, 600], gamma=0.45
+    #config.saving_path = './results/dgcnn'
+
 
     # Training from scratch
     # trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
     # trainer.train_overfit_4D(net, train_loader, config)
-    
     # trainer.train(net, train_loader, val_loader, config)
     
 
     # Pretrained weights of both dgcnn and loss heads
-    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    # trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
-    # trainer.train_overfit_4D(net, train_loader, config)
-
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+    trainer.train_overfit_4D(net, train_loader, config)
     # trainer.train(net, train_loader, val_loader, config)
 
 
@@ -96,19 +95,6 @@ if __name__ == '__main__':
     #     rotated_pc = rotate_pointcloud(config, points=batch['in_pts'], angle_range_z=60)
     #     print(rotated_pc[0,0,:])
     #     break
-
-    # Learning rate search:
-    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7' 
-    config.max_epoch = 2000
-    lr_list = [1e-1, 1e-2, 1e-3, 1e-4]
-    for lr in lr_list:
-        config.learning_rate=lr
-        config.saving_path = './results/dgcnn/lr_search/'+str(lr)
-        net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
-        trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
-        # trainer.train(net, train_loader, val_loader, config)
-        trainer.train_overfit_4D(net, train_loader, config)
-        
 
     
     # Evaluation
@@ -133,3 +119,4 @@ if __name__ == '__main__':
     #     trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
     #     # trainer.train(net, train_loader, val_loader, config)
     #     trainer.train_overfit_4D(net, train_loader, config)
+    

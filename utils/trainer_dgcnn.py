@@ -43,7 +43,9 @@ class ModelTrainerDGCNN:
         self.step = 0
 
         self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
-
+        if config.lr_scheduler == True:
+            milestones = [200, 400, 600]
+            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
 
         # Choose to train on CPU or GPU
         if on_gpu and torch.cuda.is_available():
@@ -170,7 +172,7 @@ class ModelTrainerDGCNN:
             checkpoint_directory = None
 
         net.train()
-
+        
         # Overfit one batch:
         for batch in train_loader:
 
@@ -208,6 +210,8 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
+                if config.lr_scheduler == True:        
+                    self.lr_scheduler.step()
                 if 'cuda' in self.device.type:
                     torch.cuda.synchronize(self.device)
 
@@ -288,7 +292,7 @@ class ModelTrainerDGCNN:
         for epoch in range(config.max_epoch):
 
             self.step = 0
-            for batch in training_loader:
+            for batch in training_loader:          
                 # New time
                 t = t[-1:]
                 t += [time.time()]
@@ -349,6 +353,9 @@ class ModelTrainerDGCNN:
                     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
+                if config.lr_scheduler == True:        
+                    self.lr_scheduler.step()
+
                 if 'cuda' in self.device.type:
                     torch.cuda.synchronize(self.device)
 
@@ -387,7 +394,6 @@ class ModelTrainerDGCNN:
                                                   t[-1] - t0))
 
                 self.step += 1
-
                 
             # Update epoch
             self.epoch += 1
