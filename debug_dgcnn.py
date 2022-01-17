@@ -94,7 +94,6 @@ if __name__ == '__main__':
     #     print(batch['in_pts'][0,0,:])
     #     rotated_pc = rotate_pointcloud(config, points=batch['in_pts'], angle_range_z=60)
     #     print(rotated_pc[0,0,:])
-        
     #     break
 
     
@@ -106,3 +105,16 @@ if __name__ == '__main__':
     # for angle in [0,60,30,15,5,-5,-15,-30,-60]:
     #     config.angle_z = angle
     #     evaluate_rotated(net, chkp_dir=chkp_dir, config=config)
+
+
+    # # Learning rate search:
+    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7' 
+    # config.max_epoch = 2000
+    # lr_list = [1e-1, 1e-2, 1e-3, 1e-4]
+    # for lr in lr_list:
+    #     config.learning_rate=lr
+    #     config.saving_path = './results/dgcnn/lr_search/'+str(lr)
+    #     net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
+    #     trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=True)
+    #     # trainer.train(net, train_loader, val_loader, config)
+    #     trainer.train_overfit_4D(net, train_loader, config)
