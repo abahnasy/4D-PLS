@@ -1,6 +1,9 @@
 import os
 import numpy as np
+import torch
 import open3d as o3d
+from prettytable import PrettyTable
+
 from utils.config import bcolors
 
 def d_print(str, color = bcolors.WARNING):
@@ -15,6 +18,16 @@ def write_pc(pc: np.ndarray, abs_path: str):
         d_print("successful write on desk", bcolors.OKGREEN)
     else:
         d_print("Invalid Point CLoud write", bcolors.FAIL)
+
+def seed_torch(seed=0):
+    #random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
 
 def rotate_pc(pc: np.ndarray, angle):
     """
@@ -35,3 +48,16 @@ def rotate_pc(pc: np.ndarray, angle):
     augmented_points = np.sum(np.expand_dims(pc, 2) * R, axis=1)
 
     return augmented_points, R
+
+
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad: continue
+        param = parameter.numel()
+        table.add_row([name, param])
+        total_params+=param
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
