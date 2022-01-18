@@ -5,6 +5,7 @@ import yaml
 import numpy as np
 from torch.utils.data import Dataset
 import hydra
+from sklearn.utils.class_weight import compute_class_weight
 
 from utils.debugging import d_print, write_pc
 from datasets.common import grid_subsampling
@@ -21,7 +22,9 @@ class SemanticKittiDataSet(Dataset):
         balance_classes= False,
         sampling = 'importance', # sampling for points in t-i frames
         num_samples= 99999,
-        augmentation = 'aligned' # opt:[aligned, z,so3]
+        augmentation = 'aligned', # opt:[aligned, z,so3]
+        requested_sequences = None,
+        verbose = True,
         ) -> None:
         """
         Args:
@@ -48,6 +51,8 @@ class SemanticKittiDataSet(Dataset):
         self.n_test_frames = 4
         self.saving_path = ""
         self.decay_sampling = "None" # check usage
+        self.requested_sequences = requested_sequences
+        self.verbose = verbose
         # Get a list of sequences
         if self.set == 'train':
             # self.sequences = ['{:02d}'.format(i) for i in range(11) if i != 8]
@@ -59,6 +64,10 @@ class SemanticKittiDataSet(Dataset):
             self.sequences = ['{:02d}'.format(i) for i in range(11, 22)]
         else:
             raise ValueError('Unknown set for SemanticKitti data: ', self.set)
+        # overwrite the previous default definitions if specific sequence is requested
+        if self.requested_sequences:            
+            self.sequences = ['{:02d}'.format(i) for i in self.requested_sequences]
+        if self.verbose: d_print("INFO: sequences are: {}".format(self.sequences))
         
         # List all files in each sequence
         self.frames = []
@@ -330,9 +339,24 @@ class SemanticKittiDataSet(Dataset):
             raise ValueError("not enough points after subsampling !!")
 
     
-        # AB: PointNet related part, where the 4D volumes are subsampled to fixed size to maintain a 
-        # fixed batch size.
         
+        
+        #AB: print class weights
+        # print(np.unique(in_lbls))
+        # print(np.bincount(in_lbls))
+        # # n_samples / (n_classes * np.bincount(y))
+        # n_samples = in_lbls.shape[0]
+        # n_classes = 20
+        # weights = (n_samples / (n_classes * np.bincount(in_lbls) + 1e-6))
+        # weights = [w if w < 1/1e-6 else 1 for w in weights]
+        # print(weights)
+        
+        # from prettytable import PrettyTable
+        # x = PrettyTable()
+        # x.add_column("classes", [i for i in range(20)])
+        # x.add_column("weights", weights)
+        # print(x)
+        # exit()
         in_pts , idxs = self._sample_data(in_pts, self.pointnet_size)
         # in_pts = in_pts[idxs]
         in_fts = in_fts[idxs]
