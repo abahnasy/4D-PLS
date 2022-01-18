@@ -69,7 +69,7 @@ if __name__ == '__main__':
     # print(loss)
 
     config = Config()
-    config.on_gpu = False
+    config.on_gpu = True
     config.learning_rate = 0.1
     config.max_epoch = 3000
     config.checkpoint_gap = 50
@@ -105,21 +105,21 @@ if __name__ == '__main__':
     # # chkp_dir = './results/dgcnn/Log_2022-01-12_09-56-47/checkpoints'  # without STN layer
     # # chkp_dir = './results/dgcnn/Log_2022-01-12_10-43-29/checkpoints' # without STN layer pretrained weights 
     # # chkp_dir = './results/dgcnn/Log_2022-01-15_13-56-01/checkpoints'  # with big STN layer
-    # chkp_dir = './results/dgcnn/lr_search_smallSTN/0.1/checkpoints'
+    # # chkp_dir = './results/dgcnn/lr_search_smallSTN/0.1/checkpoints'
+    # chkp_dir = './results/dgcnn/Log_2022-01-17_14-52-59/checkpoints' # big STN layer 3000 epochs
     # for angle in [0,60,30,15,5,-5,-15,-30,-60]:
     #     config.angle_z = angle
     #     evaluate_rotated(net, chkp_dir=chkp_dir, config=config)
 
 
     # # Learning rate search:
-    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7' 
-    # config.max_epoch = 2000
-    # lr_list = [1e-1, 1e-2, 1e-3, 1e-4]
-    # for lr in lr_list:
-    #     config.learning_rate=lr
-    #     config.saving_path = './results/dgcnn/lr_search/'+str(lr)
-    #     net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
-    #     trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=config.on_gpu)
-    #     # trainer.train(net, train_loader, val_loader, config)
-    #     trainer.train_overfit_4D(net, train_loader, config)
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7' 
+    config.max_epoch = 2000
+    # lr_list = [1e-1, 5e-2, 1e-2]
+    config.learning_rate=5e-3
+    config.saving_path = './results/dgcnn/lr_search/'+str(config.learning_rate)
+    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
+    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=config.on_gpu)
+    # trainer.train(net, train_loader, val_loader, config)
+    trainer.train_overfit_4D(net, train_loader, config)
     

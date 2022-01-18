@@ -418,25 +418,16 @@ class ModelTrainerDGCNN:
 
 def evaluate_rotated(net, chkp_dir, config):
     net.train()
-    if config.on_gpu and torch.cuda.is_available():
-        print('On GPU')
-        device = torch.device("cuda:0")
-    else:
-        print('On CPU')
-        device = torch.device("cpu")
+
     chkp_path = join(chkp_dir, 'current_chkp.tar')
-    pretrained_model = torch.load(chkp_path, map_location=device)
+    pretrained_model = torch.load(chkp_path, map_location=torch.device("cpu"))
     net.load_state_dict(pretrained_model['model_state_dict'])
 
     batch_path = join(chkp_dir, 'batch.tar')
-    batch = torch.load(batch_path, map_location=device)
+    batch = torch.load(batch_path, map_location=torch.device("cpu"))
 
-    # move to device 
-    net.to('cpu')
-    sample_gpu ={}
-    for k, v in batch.items():
-        sample_gpu[k] = v.to('cpu')
-
+    sample_gpu = batch
+    print(sample_gpu['in_fts'][0,0,:4])
     centers = sample_gpu['in_fts'][:,:,4:8]
     times = sample_gpu['in_fts'][:,:,8]
 
