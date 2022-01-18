@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import pickle
@@ -12,6 +13,10 @@ import sys
 from models.losses import isnan
 from models.dgcnn_utils import rotate_pointcloud
 from utils.debugging import d_print
+
+from models.dgcnn_sem_seg import DGCNN_semseg
+from models.dgcnn_utils import get_class_weights
+from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 
 # PLY reader
 from utils.ply import read_ply, write_ply
@@ -44,8 +49,8 @@ class ModelTrainerDGCNN:
 
         self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
         if config.lr_scheduler == True:
-            milestones = [200, 600, 1000]
-            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.1, verbose=False)
+            milestones = [200, 400, 600]
+            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
 
         # Choose to train on CPU or GPU
         if on_gpu and torch.cuda.is_available():
@@ -80,14 +85,25 @@ class ModelTrainerDGCNN:
                 checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
                 net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
                 print('kpconv decoder heads pretrained weights loaded.')
-            
+                freezed_layers = ['head_mlp.mlp.weight', 
+                                'head_mlp.batch_norm.bias',
+                                'head_var.mlp.weight',
+                                'head_var.batch_norm.bias',
+                                'head_softmax.mlp.weight', 
+                                'head_softmax.batch_norm.bias',
+                                'head_center.mlp.weight',
+                                'head_center.batch_norm.bias']
+                for name, value in net.named_parameters():
+                    if name in freezed_layers:
+                        value.requires_grad = False
+
             # print(pretrained_dgcnn['module.conv5.0.weight'][:5,0,0])
             # print(net.conv5[0].weight[:5,0,0])         
             # print(pretrained_dgcnn['module.conv1.0.weight'][:5,0,0])
             # print(net.conv1[0].weight[:5,0,0])         
             # print(checkpoint_heads['model_state_dict']['head_var.mlp.weight'][:5,0])
             # print(net.head_var.mlp.weight[:5,0])
-
+        
         net.to(self.device)   
 
          # Path of the result folder
@@ -103,7 +119,7 @@ class ModelTrainerDGCNN:
 
         return
 
-    def train_overfit(self, net, train_loader, epochs=1000):
+    def train_overfit_oneframe(self, net, train_loader, epochs=1000):
         net.train()
 
         # Overfit one frame: 
@@ -154,7 +170,7 @@ class ModelTrainerDGCNN:
             break
     
 
-    def train_overfit_4D(self, net, train_loader, config):
+    def train_overfit_4D(self, config, net=None, train_loader=None):
         ################
         # Initialization
         ################
@@ -170,12 +186,52 @@ class ModelTrainerDGCNN:
                 makedirs(checkpoint_directory)
         else:
             checkpoint_directory = None
-
-        net.train()
+        
+        if train_loader is None:
+            DATASET_PATH = './data'
+            train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train')
+            train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
         
         # Overfit one batch:
         for batch in train_loader:
+            
+            if net is None:
+                labels = batch['in_lbls']
+                class_weights = get_class_weights(train_set.label_values, train_set.ignored_labels, labels)
+                net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4, class_weights=class_weights)
+                self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
+                # load_dgcnn_weights: 
+                chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+                pretrained_dgcnn = torch.load(chkp_path, map_location=self.device)
+                # Rename the pretrained model for loading
+                renamed_parameters = {}
+                for key, value in pretrained_dgcnn.items():
+                    not_loading = ['conv1', 'conv8', 'bn1', 'bn8', 'conv9']
+                    if not any(layer in key for layer in not_loading):
+                        renamed_parameters[key[7:]] = value
+                net.load_state_dict(renamed_parameters, strict=False)
+                print('dgcnn pretrained weights loaded.')
 
+                 # load_heads:
+                chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
+                checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
+                net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
+                print('kpconv decoder heads pretrained weights loaded.')
+                freezed_layers = ['head_mlp.mlp.weight', 
+                                'head_mlp.batch_norm.bias',
+                                'head_var.mlp.weight',
+                                'head_var.batch_norm.bias',
+                                'head_softmax.mlp.weight', 
+                                'head_softmax.batch_norm.bias',
+                                'head_center.mlp.weight',
+                                'head_center.batch_norm.bias']
+                for name, value in net.named_parameters():
+                    if name in freezed_layers:
+                        value.requires_grad = False
+
+                
+            net.to(self.device)
+            net.train() 
             # move to device (GPU)
             sample_gpu ={}
             if 'cuda' in self.device.type:
@@ -192,7 +248,7 @@ class ModelTrainerDGCNN:
             times = sample_gpu['in_fts'][:,:,8]
 
             for epoch in range(config.max_epoch):
-                
+
                 self.optimizer.zero_grad()
                 outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
 
@@ -292,8 +348,7 @@ class ModelTrainerDGCNN:
         for epoch in range(config.max_epoch):
 
             self.step = 0
-            for batch in training_loader:
-                
+            for batch in training_loader:          
                 # New time
                 t = t[-1:]
                 t += [time.time()]
@@ -419,25 +474,15 @@ class ModelTrainerDGCNN:
 
 def evaluate_rotated(net, chkp_dir, config):
     net.train()
-    if config.on_gpu and torch.cuda.is_available():
-        print('On GPU')
-        device = torch.device("cuda:0")
-    else:
-        print('On CPU')
-        device = torch.device("cpu")
+
     chkp_path = join(chkp_dir, 'current_chkp.tar')
-    pretrained_model = torch.load(chkp_path, map_location=device)
-    net.load_state_dict(pretrained_model['model_state_dict'])
+    pretrained_model = torch.load(chkp_path, map_location=torch.device("cpu"))
+    net.load_state_dict(pretrained_model['model_state_dict'], strict=False)
 
     batch_path = join(chkp_dir, 'batch.tar')
-    batch = torch.load(batch_path, map_location=device)
+    batch = torch.load(batch_path, map_location=torch.device("cpu"))
 
-    # move to device 
-    net.to('cpu')
-    sample_gpu ={}
-    for k, v in batch.items():
-        sample_gpu[k] = v.to('cpu')
-
+    sample_gpu = batch
     centers = sample_gpu['in_fts'][:,:,4:8]
     times = sample_gpu['in_fts'][:,:,8]
 

@@ -175,6 +175,7 @@ class DGCNN_semseg(nn.Module):
         free_dim=4,
         k=20, # number of KNN neighbors
         #dropout=0.,
+        class_weights=None,
         ):
         super(DGCNN_semseg, self).__init__()
 
@@ -188,8 +189,7 @@ class DGCNN_semseg(nn.Module):
         self.first_features_dim = first_features_dim
         self.free_dim = free_dim
         out_dim = 256
-        
-        self.criterion = nn.CrossEntropyLoss(ignore_index=-1)
+        self.criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=-1)
         
         self.transform_net = Transform_Net_s()#Transform_Net()
 
@@ -247,7 +247,7 @@ class DGCNN_semseg(nn.Module):
         # STN layer
         x0 = get_graph_feature(x[:,:3,:], k=self.k)     # (batch_size, 3, num_points) -> (batch_size, 3*2, num_points, k)
         t = self.transform_net(x0)                      # (batch_size, 3, 3)
-        t_4 = torch.eye(4,4).repeat(batch_size,1,1)
+        t_4 = torch.eye(4,4).repeat(batch_size,1,1).to(x.device)
         t_4[:,:3,:3] = t
         x = x.transpose(2, 1)                           # (batch_size, 3, num_points) -> (batch_size, num_points, 3)
         x = torch.bmm(x, t_4)                           # (batch_size, num_points, 3) * (batch_size, 3, 3) -> (batch_size, num_points, 3)
