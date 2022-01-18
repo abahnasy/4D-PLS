@@ -68,6 +68,7 @@ class VNDGCNN(BaseModel):
         first_features_dim=256,
         free_dim = 4,
         pretreianed_weights = False, #AB: load pretrained weights for backbone and heads
+        freeze_head_weights = False,
         normal_channel=False,
         ):
         super(VNDGCNN, self).__init__()
@@ -78,12 +79,14 @@ class VNDGCNN(BaseModel):
         self.first_features_dim  = first_features_dim
         self.free_dim = free_dim
         self.pretreianed_weights = pretreianed_weights
+        self.freeze_head_weights = freeze_head_weights
         #AB: variable is used in the loss function 
         self.valid_labels = np.sort([c for c in lbl_values if c not in ign_lbls])
         # Choose segmentation loss
         if len(self.class_w) > 0:
             self.class_w = torch.from_numpy(np.array(self.class_w, dtype=np.float32))
-            self.criterion = torch.nn.CrossEntropyLoss(weight=class_w, ignore_index=-1)
+            self.criterion = torch.nn.CrossEntropyLoss(weight=self.class_w, ignore_index=-1)
+            d_print("INFO: weighted cross entropy")
         else:
             self.criterion = torch.nn.CrossEntropyLoss(ignore_index=-1)
         # self.k = num_class
@@ -131,7 +134,7 @@ class VNDGCNN(BaseModel):
                                    self.bn10,
                                    nn.LeakyReLU(negative_slope=0.2))
         # AB: additional layer compared to the plane implementation, 
-        # keep it since it outputs the same feature size needed for the heads !, change
+        # keep it since it outputs the same feature size needed for the heads !
         self.conv11 = nn.Conv1d(128, out_dim, kernel_size=1, bias=False)
 
         
@@ -145,6 +148,18 @@ class VNDGCNN(BaseModel):
 
         if self.pretreianed_weights:
             self._load_pretrained_weights()
+
+        if self.freeze_head_weights:
+            #TODO:Freeze head weights
+            heads = ['head_mlp', 'head_var', 'head_softmax', 'head_center']
+            for head in heads:
+                d_print("Freezing heads for {}".format(head))
+                module = self.__getattr__(head)
+                for p in  module.parameters():
+                    if p.requires_grad:
+                        p.requires_grad = False
+                        d_print("freezed", bcolors.OKBLUE)
+
 
         def _load_pretrained_weights(self):
             """ Load pretrained weights for net, do it for the finetuning task

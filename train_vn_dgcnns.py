@@ -44,7 +44,9 @@ def my_app(cfg : DictConfig) -> None:
     DATASET_PATH = hydra.utils.to_absolute_path('data')
     train_set = SemanticKittiDataSet(
         path=DATASET_PATH, set='train', num_samples=cfg.train_dataset.num_samples,
-        augmentation=cfg.train_dataset.augmentation
+        augmentation=cfg.train_dataset.augmentation,
+        requested_sequences=cfg.train_dataset.requested_sequences,
+        balance_classes=cfg.train_dataset.balance_classes,
         )
     val_set = SemanticKittiDataSet(
         path=DATASET_PATH, set='val', 
@@ -65,7 +67,13 @@ def my_app(cfg : DictConfig) -> None:
     # ----------------------------------------------------------------- #
 
     # net_class = importlib.import_module(".{}".format(cfg.trainer.net), 'models.vn_dgcnn_sem_seg')
-    net = VNDGCNN(train_set.label_values, train_set.ignored_labels, pretreianed_weights=False).to(device)
+    net = VNDGCNN(
+        train_set.label_values,
+        train_set.ignored_labels,
+        pretreianed_weights=cfg.model.pretrained_weights,
+        freeze_head_weights=cfg.model.freeze_head_weights,
+        class_w=cfg.trainer.class_w
+        ).to(device)
     # net = VNDGCNN_v1(train_set.label_values, train_set.ignored_labels, pretreianed_weights=False).to(device)
     # print detailed table for parameters
     count_parameters(net)

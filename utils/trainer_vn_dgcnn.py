@@ -20,7 +20,13 @@ from utils.metrics import IoU_from_confusions, fast_confusion
 from utils.config import Config, bcolors
 from sklearn.neighbors import KDTree
 
-from models.blocks import KPConv
+# from models.blocks import KPConv
+
+def get_lr(optimizer):
+    ret = []
+    for param_group in optimizer.param_groups:
+        ret.append(str(param_group['lr']))
+    return ", ".join(ret)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -59,13 +65,47 @@ class ModelTrainerVNDGCNN:
         other_params = [v for k, v in net.named_parameters() if 'offset' not in k and not 'head_var' in k]
         # deform_lr = config.learning_rate * config.deform_lr_factor
         var_lr =  1e-3
-        self.optimizer = torch.optim.SGD([{'params': other_params},
-                                          {'params': var_params, 'lr': var_lr},
-                                        #   {'params': deform_params, 'lr': deform_lr},
-                                          ],
-                                         lr=config.learning_rate,
-                                         momentum=config.momentum,
-                                         weight_decay=config.weight_decay)
+        if config.optimizer.name == 'sgd':
+            d_print("SGD Optimizer")
+            self.optimizer = torch.optim.SGD(
+                [
+                    {'params': other_params},
+                    {'params': var_params, 'lr': var_lr},
+                #   {'params': deform_params, 'lr': deform_lr},
+                ],
+                lr=config.optimizer.learning_rate,
+                momentum=config.momentum,
+                weight_decay=config.optimizer.weight_decay
+            )
+        elif config.optimizer.name == 'adam':
+            d_print("Adam Optimizer")
+            self.optimizer = torch.optim.Adam(
+                [
+                    {'params': other_params},
+                    {'params': var_params, 'lr': var_lr},
+                ],
+                lr=config.optimizer.learning_rate,
+                betas=(0.9, 0.999),
+                eps=1e-08,
+                weight_decay=config.optimizer.weight_decay
+            )
+        elif config.optimizer.name == 'adamw':
+            d_print("AdamW Optimizer")
+            self.optimizer= torch.optim.AdamW(
+                [
+                    {'params': other_params},
+                    {'params': var_params, 'lr': var_lr},
+                ],
+                lr=config.optimizer.learning_rate,
+                betas=(0.9, 0.999),
+                eps=1e-08,
+                weight_decay=config.optimizer.weight_decay
+            )
+        else:
+            raise NotImplementedError
+
+
+        
         self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
             self.optimizer, 
             milestones=config.lr_scheduler.milestones, 
@@ -163,6 +203,7 @@ class ModelTrainerVNDGCNN:
 
         # Start training loop
         for epoch in range(config.max_epoch):
+            # d_print("starting epoch {}, lr is {}".format(epoch, get_lr(self.optimizer)))
             net.train()
             self.step = 0
             for batch in train_loader:
@@ -203,6 +244,8 @@ class ModelTrainerVNDGCNN:
                 else:
                     raise ValueError("unknow requested task")
                 acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+                
+                # net.plot_class_statistics(outputs.cpu(), sample_gpu['in_lbls'].cpu())
                 ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
                 nan_idx = torch.isnan(ious)
                 ious[nan_idx] = 0.
@@ -257,7 +300,13 @@ class ModelTrainerVNDGCNN:
 
                 # mini validation check
                 if self.global_step % 20 == 0:
-                    self.validation(net, val_loader, config)
+                    if config.task == 'sem_seg':
+                        self.validation_sem_seg(net, val_loader, config)
+                    elif config.task == 'pls':
+                        pass
+                        # self.validation_pls(net, val_loader, config)
+                    else:
+                        raise NotImplementedError
                     #TODO: implement the mini validation function 
 
                 # net.train()
@@ -515,7 +564,57 @@ class ModelTrainerVNDGCNN:
             # Update epoch
             self.epoch += 1
 
-    def validation(self, net, val_loader, config):
+    def validation_pls(self, net, val_loader, batch_centers, config):
+        raise NotImplementedError
+        softmax = torch.nn.Softmax(1)
+        
+        # Number of classes including ignored labels
+        nc_tot = val_loader.dataset.num_classes
+        c_ious = []
+        s_ious = []
+        
+        for i, batch in enumerate(val_loader):
+            # get batch
+            sample_gpu = {}
+            if 'cuda' in self.device.type:
+                for k, v in batch.items():
+                    sample_gpu[k] = v.to(self.device)
+            else:
+                sample_gpu = batch
+                # Forward pass
+            with torch.no_grad():
+                outputs, centers_output, var_output, embedding = net(batch, config)
+                probs = softmax(outputs).cpu().detach().numpy()
+                for l_ind, label_value in enumerate(val_loader.dataset.label_values):
+                    if label_value in val_loader.dataset.ignored_labels:
+                        probs = np.insert(probs, l_ind, 0, axis=1) # AB: maybe should be done on axis = 2
+                preds = val_loader.dataset.label_values[np.argmax(probs, axis=1)]
+                preds = torch.from_numpy(preds)
+                preds.to(outputs.device)
+                ins_preds = net.ins_pred(preds, centers_output, var_output, embedding, batch.points, batch.times.unsqueeze(1))
+            # Get probs and labels
+            stk_probs = softmax(outputs).cpu().detach().numpy()
+            centers_output = centers_output.cpu().detach().numpy()
+            centers_output = centers_output
+            ins_preds = ins_preds.cpu().detach().numpy()
+
+            frame_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
+            center_preds = np.zeros(frame_labels.shape, dtype=np.float32)
+            ins_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
+
+            centers_gt = batch_centers.cpu().detach().numpy()
+            center_gt = centers_gt[:, 0]
+            c_iou = (np.sum(np.logical_and(center_preds > 0.5, center_gt > 0.5))) / \
+                        (np.sum(center_preds > 0.5) + np.sum(center_gt > 0.5) + 1e-10)
+            c_ious.append(c_iou)
+            s_ious.append(np.sum(center_preds > 0.5))
+            
+
+
+            
+
+
+    def validation_sem_seg(self, net, val_loader, config):
         d_print("validation call")
         # net.eval()
         with torch.no_grad():

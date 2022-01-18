@@ -1,13 +1,20 @@
 train_dataset:
-  num_samples: 10
+  num_samples: 4
   augmentation: 'aligned'
+  balance_classes: True
+  requested_sequences: [4]
 val_dataset:
-  num_samples: 1
+  num_samples: 4
   augmentation: 'z'
-model: 'VNDGCNN'
+  requested_sequences: [4]
+model:
+  name: 'VNDGCNN'
+  pretrained_weights: False
+  freeze_head_weights: False
+
 train_loader:
   shuffle: False
-  batch_size: 1
+  batch_size: 4
   num_workers: 4
   pin_memory: True
 val_loader:
@@ -18,16 +25,21 @@ val_loader:
 trainer:
   style: 'train' #opts: [overfit, train]
   task: 'sem_seg' # options: ['pls', 'sem_seg']
-  learning_rate: 1e-2
   lr_decays: #dynamic calculations
   var_lr: 1e-1
   momentum: 0.98
-  weight_decay: 0 #1e-3
+  optimizer:
+    name: adam #[adam, adamw, sgd, ]
+    learning_rate: 1e-2
+    weight_decay: 0 #1e-4
   lr_scheduler:
-    milestones: [3,10,20,100,200]
+    milestones: [20,40,60,80,100]
     gamma: 0.5
   free_dim: 4
   # saving:
-  max_epoch: 300
-  grad_clip_norm: 100.0
+  max_epoch: 1000
+  grad_clip_norm: 0. #100.0
+  class_w: [
+    # 1,1,1,1,1,1,1,1,0.2,1,1,0.7,1,1,0.6,1,0.6,1,1
+  ]
 
