@@ -31,7 +31,7 @@ class SemanticKittiDataSet(Dataset):
             config: configuration struct
             set: train, val or test split
             sequential_batch: TODO
-            balance_classes: TODO
+            balance_classes:
         Returns: None
         """
         super().__init__()
@@ -52,6 +52,7 @@ class SemanticKittiDataSet(Dataset):
         self.saving_path = ""
         self.decay_sampling = "None" # check usage
         self.requested_sequences = requested_sequences
+        self.balance_classes = balance_classes
         self.verbose = verbose
         # Get a list of sequences
         if self.set == 'train':
@@ -177,7 +178,7 @@ class SemanticKittiDataSet(Dataset):
     def __len__(self) -> int:
         return len(self.all_inds)
 
-    def _sample_data(self, data, num_sample):
+    def _sample_data(self, data, num_sample, weights = None):
         """ data is in N x ...
             we want to keep num_samplexC of them.
             if N > num_sample, we will randomly keep num_sample of them.
@@ -187,11 +188,11 @@ class SemanticKittiDataSet(Dataset):
         if (N == num_sample):
             return data, range(N)
         elif (N > num_sample):
-            sample = np.random.choice(N, num_sample, replace=False) # don't select the sampe point multiple times
+            sample = np.random.choice(N, num_sample, replace=False, p = weights) # don't select the sampe point multiple times
             assert np.unique(sample).shape[0] == sample.shape[0]
             return data[sample, ...], sample
         else:
-            sample = np.random.choice(N, num_sample-N)
+            sample = np.random.choice(N, num_sample-N, p=weights)
             dup_data = data[sample, ...]
             return np.concatenate([data, dup_data], 0), list(range(N))+list(sample)
 
@@ -357,12 +358,39 @@ class SemanticKittiDataSet(Dataset):
         # x.add_column("weights", weights)
         # print(x)
         # exit()
-        in_pts , idxs = self._sample_data(in_pts, self.pointnet_size)
-        # in_pts = in_pts[idxs]
+
+        # from prettytable import PrettyTable
+        # table = PrettyTable()
+        # table.add_column("cls", [i for i in range(20)])
+        # (unique, counts) = np.unique(in_lbls, return_counts=True)
+        # table_counts = [counts[np.where(unique == i)][0] if i in unique else 0 for i in range(20)]
+        # weights = [in_lbls.shape[0] / count if count != 0 else 0 for count in table_counts]
+        # print(unique)
+        # print(counts)
+        # print(table_counts)
+        # table.add_column("lbls", table_counts)
+        # table.add_column("weights", weights)
+        # print(table)
+        
+
+        if self.balance_classes:
+            (unique, counts) = np.unique(in_lbls, return_counts=True)
+            _counts = [counts[np.where(unique == i)][0] if i in unique else 0 for i in range(20)]
+            weights = [in_lbls.shape[0] / count if count != 0 else 0 for count in _counts]
+            p_weights = np.zeros(in_lbls.shape[0])
+            for i in range(20):
+                idx = np.where(in_lbls == i)
+                p_weights[idx] = weights[i]
+            p_weights = p_weights / p_weights.sum()
+        else:
+            p_weights = None
+
+        in_pts , idxs = self._sample_data(in_pts, self.pointnet_size, weights = p_weights)
+        # in_pts_ = in_pts[idxs]
         in_fts = in_fts[idxs]
         in_lbls = in_lbls[idxs]
         in_slbls = in_slbls[idxs]
-        # write_pc(in_fts[:,:3], './before_aug')
+
         if self.augmentation == 'z':
             rotation_options = np.array([i for i in range(0,60,5)], dtype=np.float32)
             z_angle = np.random.choice(rotation_options)
