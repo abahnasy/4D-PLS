@@ -187,67 +187,69 @@ class ModelTrainerDGCNN:
         else:
             checkpoint_directory = None
         
-        if train_loader is None:
-            DATASET_PATH = './data'
-            train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train')
-            train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
+        # if train_loader is None:
+        #     DATASET_PATH = './data'
+        #     train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train')
+        #     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
         
-        # Overfit one batch:
-        for batch in train_loader:
+        # if net is None:
+        #     labels = batch['in_lbls']
+        #     class_weights = get_class_weights(train_set.label_values, train_set.ignored_labels, labels)
+        #     net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4, class_weights=class_weights)
+        #     self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
             
-            if net is None:
-                labels = batch['in_lbls']
-                class_weights = get_class_weights(train_set.label_values, train_set.ignored_labels, labels)
-                net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4, class_weights=class_weights)
-                self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
-                # load_dgcnn_weights: 
-                chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-                pretrained_dgcnn = torch.load(chkp_path, map_location=self.device)
-                # Rename the pretrained model for loading
-                renamed_parameters = {}
-                for key, value in pretrained_dgcnn.items():
-                    not_loading = ['conv1', 'conv8', 'bn1', 'bn8', 'conv9']
-                    if not any(layer in key for layer in not_loading):
-                        renamed_parameters[key[7:]] = value
-                net.load_state_dict(renamed_parameters, strict=False)
-                print('dgcnn pretrained weights loaded.')
+        #     # load_dgcnn_weights: 
+        #     chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+        #     pretrained_dgcnn = torch.load(chkp_path, map_location=self.device)
+        #     # Rename the pretrained model for loading
+        #     renamed_parameters = {}
+        #     for key, value in pretrained_dgcnn.items():
+        #         not_loading = ['conv1', 'conv8', 'bn1', 'bn8', 'conv9']
+        #         if not any(layer in key for layer in not_loading):
+        #             renamed_parameters[key[7:]] = value
+        #     net.load_state_dict(renamed_parameters, strict=False)
+        #     print('dgcnn pretrained weights loaded.')
 
-                 # load_heads:
-                chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
-                checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
-                net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
-                print('kpconv decoder heads pretrained weights loaded.')
-                freezed_layers = ['head_mlp.mlp.weight', 
-                                'head_mlp.batch_norm.bias',
-                                'head_var.mlp.weight',
-                                'head_var.batch_norm.bias',
-                                'head_softmax.mlp.weight', 
-                                'head_softmax.batch_norm.bias',
-                                'head_center.mlp.weight',
-                                'head_center.batch_norm.bias']
-                for name, value in net.named_parameters():
-                    if name in freezed_layers:
-                        value.requires_grad = False
+        #     # load_heads:
+        #     chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
+        #     checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
+        #     net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
+        #     print('kpconv decoder heads pretrained weights loaded.')
+        #     freezed_layers = ['head_mlp.mlp.weight', 
+        #                     'head_mlp.batch_norm.bias',
+        #                     'head_var.mlp.weight',
+        #                     'head_var.batch_norm.bias',
+        #                     'head_softmax.mlp.weight', 
+        #                     'head_softmax.batch_norm.bias',
+        #                     'head_center.mlp.weight',
+        #                     'head_center.batch_norm.bias']
+        #     for name, value in net.named_parameters():
+        #         if name in freezed_layers:
+        #             value.requires_grad = False
 
-                
-            net.to(self.device)
-            net.train() 
-            # move to device (GPU)
-            sample_gpu ={}
-            if 'cuda' in self.device.type:
-                for k, v in batch.items():
-                    sample_gpu[k] = v.to(self.device)
-            else:
-                sample_gpu = batch
+            
+        net.to(self.device)
+        net.train() 
+        
+        batch_num=4
+        for epoch in range(config.max_epoch):
+            batch_count=0
+            for batch in train_loader:
+                print(batch['in_fts'][0,0,:])
+                # move to device (GPU)
+                sample_gpu ={}
+                if 'cuda' in self.device.type:
+                    for k, v in batch.items():
+                        sample_gpu[k] = v.to(self.device)
+                else:
+                    sample_gpu = batch
 
-            # Save the batch used in this overfitting experiment
-            batch_path = join(checkpoint_directory, 'batch.tar')
-            torch.save(sample_gpu, batch_path)           
+                # Save the batch used in this overfitting experiment
+                batch_path = join(checkpoint_directory, 'batch'+str(batch_count)+'.tar')
+                torch.save(sample_gpu, batch_path)           
 
-            centers = sample_gpu['in_fts'][:,:,4:8]
-            times = sample_gpu['in_fts'][:,:,8]
-
-            for epoch in range(config.max_epoch):
+                centers = sample_gpu['in_fts'][:,:,4:8]
+                times = sample_gpu['in_fts'][:,:,8]
 
                 self.optimizer.zero_grad()
                 outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
@@ -262,9 +264,9 @@ class ModelTrainerDGCNN:
                 ious[nan_idx] = 0.
 
                 loss.backward()
-                if config.grad_clip_norm > 0:
-                    # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
-                    torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
+                # if config.grad_clip_norm > 0:
+                #     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
+                #     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
                 if config.lr_scheduler == True:        
                     self.lr_scheduler.step()
@@ -312,8 +314,12 @@ class ModelTrainerDGCNN:
                     if (self.epoch + 1) % config.checkpoint_gap == 0:
                         checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
                         torch.save(save_dict, checkpoint_path)
+
+                batch_count+=1
+                if batch_count>=batch_num:
+                    break
             
-            break
+            
 
 
     def train(self, net, training_loader, val_loader, config):

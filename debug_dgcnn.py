@@ -29,7 +29,7 @@ if __name__ == '__main__':
     DATASET_PATH = './data'
     train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train')
     val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val')
-    train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=1, pin_memory=True)
     
 
@@ -85,9 +85,9 @@ if __name__ == '__main__':
     
 
     # Pretrained weights of both dgcnn and loss heads
-    # chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    # trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=config.on_gpu)
-    # # trainer.train_overfit_4D(config, net, train_loader)
+    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=config.on_gpu)
+    trainer.train_overfit_4D(config, net, train_loader)
     # trainer.train_overfit_4D(config)
 
     # trainer.train(net, train_loader, val_loader, config)
@@ -102,17 +102,17 @@ if __name__ == '__main__':
 
     
     # Evaluation
-    from utils.trainer_dgcnn import evaluate_rotated
-    config.eval_rotation = 'vertical'
+    # from utils.trainer_dgcnn import evaluate_rotated
+    # config.eval_rotation = 'vertical'
     # chkp_dir = './results/dgcnn/Log_2022-01-12_09-56-47/checkpoints'  # without STN layer
     # chkp_dir = './results/dgcnn/Log_2022-01-12_10-43-29/checkpoints' # without STN layer pretrained weights 
     # chkp_dir = './results/dgcnn/Log_2022-01-15_13-56-01/checkpoints'  # with big STN layer
     # chkp_dir = './results/dgcnn/lr_search_smallSTN/0.1/checkpoints'
     # chkp_dir = './results/dgcnn/Log_2022-01-17_14-52-59/checkpoints' # big STN layer 3000 epochs
-    chkp_dir = './results/dgcnn/Log_2022-01-18_16-29-37/checkpoints'
-    for angle in [0,60,30,15,5,-5,-15,-30,-60]:
-        config.angle_z = angle
-        evaluate_rotated(net, chkp_dir=chkp_dir, config=config)
+    # chkp_dir = './results/dgcnn/Log_2022-01-18_16-29-37/checkpoints'
+    # for angle in [0,60,30,15,5,-5,-15,-30,-60]:
+    #     config.angle_z = angle
+    #     evaluate_rotated(net, chkp_dir=chkp_dir, config=config)
 
 
     # # Learning rate search:
