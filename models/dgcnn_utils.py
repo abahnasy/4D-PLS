@@ -12,6 +12,23 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from kernels.kernel_points import create_3D_rotations
+from sklearn.utils.class_weight import compute_class_weight
+
+
+def get_class_weights(lbl_values, ign_lbls, labels):
+    
+    valid_labels = np.sort([c for c in lbl_values if c not in ign_lbls])
+    labels = labels.view(-1,)
+    target = - torch.ones_like(labels)
+    for i, c in enumerate(valid_labels):
+        target[labels == c] = i
+    
+    y = target[target!=-1].numpy()
+    class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y), y=y)
+    all_class_weights = torch.zeros(19)
+    for i in range(len(class_weights)):
+        all_class_weights[np.unique(y)[i]] = class_weights[i]
+    return all_class_weights
 
 
 def cal_loss(pred, gold, smoothing=True):

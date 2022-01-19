@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import pickle
@@ -9,9 +10,13 @@ from os import makedirs, remove
 from os.path import exists, join
 import time
 import sys
-from models.losses import isnan
+from models.losses import instance_half_loss, isnan
 from models.dgcnn_utils import rotate_pointcloud
 from utils.debugging import d_print
+
+from models.dgcnn_sem_seg import DGCNN_semseg
+from models.dgcnn_utils import get_class_weights
+from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 
 # PLY reader
 from utils.ply import read_ply, write_ply
@@ -42,7 +47,8 @@ class ModelTrainerDGCNN:
         self.global_step = 0
         self.step = 0
 
-        self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
+        # self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
+        self.optimizer = torch.optim.Adam(net.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
         if config.lr_scheduler == True:
             milestones = [200, 400, 600]
             self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
@@ -80,14 +86,25 @@ class ModelTrainerDGCNN:
                 checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
                 net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
                 print('kpconv decoder heads pretrained weights loaded.')
-            
+                freezed_layers = ['head_mlp.mlp.weight', 
+                                'head_mlp.batch_norm.bias',
+                                'head_var.mlp.weight',
+                                'head_var.batch_norm.bias',
+                                'head_softmax.mlp.weight', 
+                                'head_softmax.batch_norm.bias',
+                                'head_center.mlp.weight',
+                                'head_center.batch_norm.bias']
+                for name, value in net.named_parameters():
+                    if name in freezed_layers:
+                        value.requires_grad = False
+
             # print(pretrained_dgcnn['module.conv5.0.weight'][:5,0,0])
             # print(net.conv5[0].weight[:5,0,0])         
             # print(pretrained_dgcnn['module.conv1.0.weight'][:5,0,0])
             # print(net.conv1[0].weight[:5,0,0])         
             # print(checkpoint_heads['model_state_dict']['head_var.mlp.weight'][:5,0])
             # print(net.head_var.mlp.weight[:5,0])
-
+        
         net.to(self.device)   
 
          # Path of the result folder
@@ -99,11 +116,11 @@ class ModelTrainerDGCNN:
             config.save()
 
 
-        self.logger = SummaryWriter(log_dir=config.saving_path+'/runs')
-
+        self.train_logger = SummaryWriter(log_dir=config.saving_path+'/runs/train')
+        self.val_logger = SummaryWriter(log_dir=config.saving_path+'/runs/validation')
         return
 
-    def train_overfit(self, net, train_loader, epochs=1000):
+    def train_overfit_oneframe(self, net, train_loader, epochs=1000):
         net.train()
 
         # Overfit one frame: 
@@ -141,12 +158,12 @@ class ModelTrainerDGCNN:
                 for i, iou in enumerate(ious):
                     if isnan(iou):
                         iou = 0.
-                    self.logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
                 #AB: log into tensorbaord
-                self.logger.add_scalar('Loss/CrossEntropy', loss.item(), self.global_step)
-                self.logger.add_scalar('acc/train', acc*100, self.global_step)
+                self.train_logger.add_scalar('Loss/CrossEntropy', loss.item(), self.global_step)
+                self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
             
                 self.global_step += 1
@@ -154,7 +171,7 @@ class ModelTrainerDGCNN:
             break
     
 
-    def train_overfit_4D(self, net, train_loader, config):
+    def train_overfit_4D(self, config, net=None, train_loader=None, val_loader=None, loss_type='4DPLSloss'):
         ################
         # Initialization
         ################
@@ -170,45 +187,102 @@ class ModelTrainerDGCNN:
                 makedirs(checkpoint_directory)
         else:
             checkpoint_directory = None
-
-        net.train()
         
-        # Overfit one batch:
-        for batch in train_loader:
+        # if train_loader is None:
+        #     DATASET_PATH = './data'
+        #     train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train')
+        #     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, pin_memory=True)
+        
+        # if net is None:
+        #     labels = batch['in_lbls']
+        #     class_weights = get_class_weights(train_set.label_values, train_set.ignored_labels, labels)
+        #     net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4, class_weights=class_weights)
+        #     self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
+            
+        #     # load_dgcnn_weights: 
+        #     chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
+        #     pretrained_dgcnn = torch.load(chkp_path, map_location=self.device)
+        #     # Rename the pretrained model for loading
+        #     renamed_parameters = {}
+        #     for key, value in pretrained_dgcnn.items():
+        #         not_loading = ['conv1', 'conv8', 'bn1', 'bn8', 'conv9']
+        #         if not any(layer in key for layer in not_loading):
+        #             renamed_parameters[key[7:]] = value
+        #     net.load_state_dict(renamed_parameters, strict=False)
+        #     print('dgcnn pretrained weights loaded.')
 
-            # move to device (GPU)
-            sample_gpu ={}
-            if 'cuda' in self.device.type:
-                for k, v in batch.items():
-                    sample_gpu[k] = v.to(self.device)
-            else:
-                sample_gpu = batch
+        #     # load_heads:
+        #     chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
+        #     checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
+        #     net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
+        #     print('kpconv decoder heads pretrained weights loaded.')
+        #     freezed_layers = ['head_mlp.mlp.weight', 
+        #                     'head_mlp.batch_norm.bias',
+        #                     'head_var.mlp.weight',
+        #                     'head_var.batch_norm.bias',
+        #                     'head_softmax.mlp.weight', 
+        #                     'head_softmax.batch_norm.bias',
+        #                     'head_center.mlp.weight',
+        #                     'head_center.batch_norm.bias']
+        #     for name, value in net.named_parameters():
+        #         if name in freezed_layers:
+        #             value.requires_grad = False
 
-            # Save the batch used in this overfitting experiment
-            batch_path = join(checkpoint_directory, 'batch.tar')
-            torch.save(sample_gpu, batch_path)           
+            
+        net.to(self.device)
+        net.train() 
+        
+        for epoch in range(config.max_epoch):
+            
+            # Training loop
+            train_acc_mean = 0.
+            train_iou_mean = 0.
+            # ious = torch.zeros(19)
+            # total_loss = 0. 
+            # CE_loss = 0.
+            # center_loss = 0.
+            # instance_half_l = 0.
+            # instance_loss = 0.
+            # variance_loss = 0.
 
-            centers = sample_gpu['in_fts'][:,:,4:8]
-            times = sample_gpu['in_fts'][:,:,8]
+            for batch in train_loader:
+                # move to device (GPU)
+                sample_gpu ={}
+                if 'cuda' in self.device.type:
+                    for k, v in batch.items():
+                        sample_gpu[k] = v.to(self.device)
+                else:
+                    sample_gpu = batch
 
-            for epoch in range(config.max_epoch):
-                
+                # # Save the batch used in this overfitting experiment
+                # batch_path = join(checkpoint_directory, 'batch.tar')
+                # torch.save(sample_gpu, batch_path)           
+
+                centers = sample_gpu['in_fts'][:,:,4:8]
+                times = sample_gpu['in_fts'][:,:,8]
+
                 self.optimizer.zero_grad()
                 outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
-
-                loss = net.loss(
-                    outputs, centers_output, var_output, embedding, 
-                    sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+                
+                if loss_type == 'CEloss':
+                    labels = sample_gpu['in_lbls'].type(torch.LongTensor)
+                    loss = net.cross_entropy_loss(outputs, labels)
+                if loss_type == '4DPLSloss':
+                    loss = net.loss(
+                        outputs, centers_output, var_output, embedding, 
+                        sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+                
                 acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-
                 ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())               
                 nan_idx = torch.isnan(ious)
                 ious[nan_idx] = 0.
-
+                train_acc_mean += acc         
+                meanIOU = ious.sum()/torch.count_nonzero(ious)
+                train_iou_mean += meanIOU
                 loss.backward()
-                if config.grad_clip_norm > 0:
-                    # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
-                    torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
+                # if config.grad_clip_norm > 0:
+                #     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
+                #     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
                 if config.lr_scheduler == True:        
                     self.lr_scheduler.step()
@@ -218,25 +292,28 @@ class ModelTrainerDGCNN:
                 for i, iou in enumerate(ious):
                     if isnan(iou):
                         iou = 0.
-                    self.logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.train_logger.add_scalar('ious/meanIoU', meanIOU, self.global_step)    
                 #AB: log into tensorbaord
-                self.logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
-                self.logger.add_scalar('acc/train', acc*100, self.global_step)
+                if loss_type == 'CEloss': # TODO: debug
+                    self.train_logger.add_scalar('Loss/cross_entropy_loss', loss.item(), self.global_step)
+                if loss_type == '4DPLSloss':
+                    self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
+                self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 
-                print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
+                print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
 
                 # Log file
                 if config.saving:
                     with open(join(config.saving_path, 'training.txt'), "a") as file:
-                        file.write('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(self.global_step, loss.item(), ious.mean(), acc*100))
+                        file.write('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), meanIOU, acc*100))
 
                 self.global_step += 1
 
@@ -256,8 +333,86 @@ class ModelTrainerDGCNN:
                     if (self.epoch + 1) % config.checkpoint_gap == 0:
                         checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
                         torch.save(save_dict, checkpoint_path)
+
+            if epoch%5 == 0:
+                print('Validation process...')
+
+                val_acc_mean = 0.
+                val_iou_mean = 0.
+                for batch in val_loader:
+                    # move to device (GPU)
+                    sample_gpu ={}
+                    if 'cuda' in self.device.type:
+                        for k, v in batch.items():
+                            sample_gpu[k] = v.to(self.device)
+                    else:
+                        sample_gpu = batch
+        
+
+                    centers = sample_gpu['in_fts'][:,:,4:8]
+                    times = sample_gpu['in_fts'][:,:,8]
+
+                    outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
+                    
+                    if loss_type == 'CEloss': # TODO: debug
+                        labels = sample_gpu['in_lbls'].type(torch.LongTensor)
+                        loss = net.cross_entropy_loss(outputs, labels)
+                    if loss_type == '4DPLSloss':
+                        loss = net.loss(
+                            outputs, centers_output, var_output, embedding, 
+                            sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+                    
+                    acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+                    ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())               
+                    nan_idx = torch.isnan(ious)
+                    ious[nan_idx] = 0.
+                    val_acc_mean+=acc
+                    meanIOU = ious.sum()/torch.count_nonzero(ious)
+                    val_iou_mean += meanIOU
+                    if 'cuda' in self.device.type:
+                        torch.cuda.synchronize(self.device)
+
+                    for i, iou in enumerate(ious):
+                        if isnan(iou):
+                            iou = 0.
+                        self.val_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    # log mean IoU
+                    self.val_logger.add_scalar('ious/meanIoU', meanIOU, self.global_step)    
+                    #AB: log into tensorbaord
+                    if loss_type == 'CEloss': # TODO: debug
+                        self.val_logger.add_scalar('Loss/cross_entropy_loss', loss.item(), self.global_step)
+                    if loss_type == '4DPLSloss':
+                        self.val_logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
+                    self.val_logger.add_scalar('acc/train', acc*100, self.global_step)
+                    
+                    print('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
+
+                    # Log file
+                    if config.saving:
+                        with open(join(config.saving_path, 'training.txt'), "a") as file:
+                            file.write('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), meanIOU, acc*100))
+
+                    self.global_step += 1
+                
+                train_acc_mean = train_acc_mean/4
+                val_acc_mean = val_acc_mean/4
+                train_iou_mean = train_iou_mean/4
+                val_iou_mean = val_iou_mean/4
+                self.train_logger.add_scalar('report/acc', train_acc_mean*100, epoch)
+                self.val_logger.add_scalar('report/acc', val_acc_mean*100, epoch)
+                self.train_logger.add_scalar('report/mean_ious', train_iou_mean*100, epoch)
+                self.val_logger.add_scalar('report/mean_ious', val_iou_mean*100, epoch)
+                if config.saving:
+                    with open(join(config.saving_path, 'training.txt'), "a") as file:
+                        file.write('Training_acc:{0:.3f}, Validation_acc:{1:.3f}\n'.format(train_acc_mean*100,val_acc_mean*100))
+                    
             
-            break
 
 
     def train(self, net, training_loader, val_loader, config):
@@ -327,19 +482,19 @@ class ModelTrainerDGCNN:
                 for i, iou in enumerate(ious):
                     if isnan(iou):
                         iou = 0.
-                    self.logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
                 #AB: log into tensorbaord
-                self.logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
                 
-                self.logger.add_scalar('acc/train', acc*100, self.global_step)
+                self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 self.global_step += 1
 
                 #print('Step:{0:4d}, total_loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
@@ -421,13 +576,12 @@ def evaluate_rotated(net, chkp_dir, config):
 
     chkp_path = join(chkp_dir, 'current_chkp.tar')
     pretrained_model = torch.load(chkp_path, map_location=torch.device("cpu"))
-    net.load_state_dict(pretrained_model['model_state_dict'])
+    net.load_state_dict(pretrained_model['model_state_dict'], strict=False)
 
     batch_path = join(chkp_dir, 'batch.tar')
     batch = torch.load(batch_path, map_location=torch.device("cpu"))
 
     sample_gpu = batch
-    print(sample_gpu['in_fts'][0,0,:4])
     centers = sample_gpu['in_fts'][:,:,4:8]
     times = sample_gpu['in_fts'][:,:,8]
 

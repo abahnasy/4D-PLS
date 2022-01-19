@@ -35,11 +35,12 @@ if __name__ == '__main__':
     net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
     
     config = Config()
+    config.on_gpu = True
     config.learning_rate = 0.1
-    config.saving_path = './results/dgcnn'
+    config.max_epoch = 1000
     config.checkpoint_gap = 50
-    config.max_epoch = 60
-    config.lr_scheduler = False      # multistep scheduler: milestones=[200, 600, 1000], gamma=0.1
+    config.lr_scheduler = False      # multistep scheduler: milestones=[200, 400, 600], gamma=0.45
+
 
     # Training from scratch
     # trainer = ModelTrainerDGCNN(net, config, on_gpu=True)
