@@ -298,7 +298,7 @@ class DGCNN_semseg(nn.Module):
         target = - torch.ones_like(labels)
         for i, c in enumerate(self.valid_labels):
             target[labels == c] = i
-
+        target = target.to(outputs.device)
         return self.criterion(outputs, target)
 
 

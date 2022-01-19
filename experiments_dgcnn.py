@@ -45,8 +45,9 @@ if __name__ == '__main__':
     config.checkpoint_gap = 50
     config.lr_scheduler = False      # multistep scheduler: milestones=[200, 400, 600], gamma=0.45
     config.saving_path = './results/dgcnn/Expriments0119/'+'z-z'
-
+    # config.saving_path = './results/dgcnn/Expriments0119-CEloss/'+'z-z'
+    
     # Pretrained weights of both dgcnn and loss heads
     chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
     trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=config.on_gpu)
-    trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')
+    trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss

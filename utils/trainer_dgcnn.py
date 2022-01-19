@@ -296,13 +296,16 @@ class ModelTrainerDGCNN:
                 # log mean IoU
                 self.train_logger.add_scalar('ious/meanIoU', meanIOU, self.global_step)    
                 #AB: log into tensorbaord
-                self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
+                if loss_type == 'CEloss': # TODO: debug
+                    self.train_logger.add_scalar('Loss/cross_entropy_loss', loss.item(), self.global_step)
+                if loss_type == '4DPLSloss':
+                    self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
                 self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 
                 print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
@@ -376,13 +379,16 @@ class ModelTrainerDGCNN:
                     # log mean IoU
                     self.val_logger.add_scalar('ious/meanIoU', meanIOU, self.global_step)    
                     #AB: log into tensorbaord
-                    self.val_logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                    self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                    self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                    self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                    self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                    self.val_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                    self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
+                    if loss_type == 'CEloss': # TODO: debug
+                        self.val_logger.add_scalar('Loss/cross_entropy_loss', loss.item(), self.global_step)
+                    if loss_type == '4DPLSloss':
+                        self.val_logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                        self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
                     self.val_logger.add_scalar('acc/train', acc*100, self.global_step)
                     
                     print('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
