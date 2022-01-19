@@ -10,7 +10,7 @@ from os import makedirs, remove
 from os.path import exists, join
 import time
 import sys
-from models.losses import isnan
+from models.losses import instance_half_loss, isnan
 from models.dgcnn_utils import rotate_pointcloud
 from utils.debugging import d_print
 
@@ -115,8 +115,8 @@ class ModelTrainerDGCNN:
             config.save()
 
 
-        self.logger = SummaryWriter(log_dir=config.saving_path+'/runs')
-
+        self.train_logger = SummaryWriter(log_dir=config.saving_path+'/runs/train')
+        self.val_logger = SummaryWriter(log_dir=config.saving_path+'/runs/validation')
         return
 
     def train_overfit_oneframe(self, net, train_loader, epochs=1000):
@@ -157,12 +157,12 @@ class ModelTrainerDGCNN:
                 for i, iou in enumerate(ious):
                     if isnan(iou):
                         iou = 0.
-                    self.logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
                 #AB: log into tensorbaord
-                self.logger.add_scalar('Loss/CrossEntropy', loss.item(), self.global_step)
-                self.logger.add_scalar('acc/train', acc*100, self.global_step)
+                self.train_logger.add_scalar('Loss/CrossEntropy', loss.item(), self.global_step)
+                self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
             
                 self.global_step += 1
@@ -170,7 +170,7 @@ class ModelTrainerDGCNN:
             break
     
 
-    def train_overfit_4D(self, config, net=None, train_loader=None):
+    def train_overfit_4D(self, config, net=None, train_loader=None, val_loader=None, loss_type='4DPLSloss'):
         ################
         # Initialization
         ################
@@ -231,11 +231,20 @@ class ModelTrainerDGCNN:
         net.to(self.device)
         net.train() 
         
-        batch_num=4
         for epoch in range(config.max_epoch):
-            batch_count=0
+            
+            # Training loop
+            train_acc_mean = 0.
+            train_iou_mean = 0.
+            # ious = torch.zeros(19)
+            # total_loss = 0. 
+            # CE_loss = 0.
+            # center_loss = 0.
+            # instance_half_l = 0.
+            # instance_loss = 0.
+            # variance_loss = 0.
+
             for batch in train_loader:
-                print(batch['in_fts'][0,0,:])
                 # move to device (GPU)
                 sample_gpu ={}
                 if 'cuda' in self.device.type:
@@ -244,25 +253,30 @@ class ModelTrainerDGCNN:
                 else:
                     sample_gpu = batch
 
-                # Save the batch used in this overfitting experiment
-                batch_path = join(checkpoint_directory, 'batch'+str(batch_count)+'.tar')
-                torch.save(sample_gpu, batch_path)           
+                # # Save the batch used in this overfitting experiment
+                # batch_path = join(checkpoint_directory, 'batch.tar')
+                # torch.save(sample_gpu, batch_path)           
 
                 centers = sample_gpu['in_fts'][:,:,4:8]
                 times = sample_gpu['in_fts'][:,:,8]
 
                 self.optimizer.zero_grad()
                 outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
-
-                loss = net.loss(
-                    outputs, centers_output, var_output, embedding, 
-                    sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+                
+                if loss_type == 'CEloss':
+                    labels = sample_gpu['in_lbls'].type(torch.LongTensor)
+                    loss = net.cross_entropy_loss(outputs, labels)
+                if loss_type == '4DPLSloss':
+                    loss = net.loss(
+                        outputs, centers_output, var_output, embedding, 
+                        sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+                
                 acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-
                 ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())               
                 nan_idx = torch.isnan(ious)
                 ious[nan_idx] = 0.
-
+                train_acc_mean += acc         
+                train_iou_mean += ious.mean()
                 loss.backward()
                 # if config.grad_clip_norm > 0:
                 #     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
@@ -276,25 +290,25 @@ class ModelTrainerDGCNN:
                 for i, iou in enumerate(ious):
                     if isnan(iou):
                         iou = 0.
-                    self.logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
                 #AB: log into tensorbaord
-                self.logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
-                self.logger.add_scalar('acc/train', acc*100, self.global_step)
+                self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
+                self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 
-                print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
+                print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), ious.mean(), acc*100))
 
                 # Log file
                 if config.saving:
                     with open(join(config.saving_path, 'training.txt'), "a") as file:
-                        file.write('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(self.global_step, loss.item(), ious.mean(), acc*100))
+                        file.write('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), ious.mean(), acc*100))
 
                 self.global_step += 1
 
@@ -315,10 +329,80 @@ class ModelTrainerDGCNN:
                         checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
                         torch.save(save_dict, checkpoint_path)
 
-                batch_count+=1
-                if batch_count>=batch_num:
-                    break
-            
+            if epoch%5 == 0:
+                print('Validation process...')
+
+                val_acc_mean = 0.
+                val_iou_mean = 0.
+                for batch in val_loader:
+                    # move to device (GPU)
+                    sample_gpu ={}
+                    if 'cuda' in self.device.type:
+                        for k, v in batch.items():
+                            sample_gpu[k] = v.to(self.device)
+                    else:
+                        sample_gpu = batch
+        
+
+                    centers = sample_gpu['in_fts'][:,:,4:8]
+                    times = sample_gpu['in_fts'][:,:,8]
+
+                    outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
+                    
+                    if loss_type == 'CEloss': # TODO: debug
+                        labels = sample_gpu['in_lbls'].type(torch.LongTensor)
+                        loss = net.cross_entropy_loss(outputs, labels)
+                    if loss_type == '4DPLSloss':
+                        loss = net.loss(
+                            outputs, centers_output, var_output, embedding, 
+                            sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+                    
+                    acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+                    ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())               
+                    nan_idx = torch.isnan(ious)
+                    ious[nan_idx] = 0.
+                    val_acc_mean+=acc
+                    val_iou_mean += ious.mean()
+                    if 'cuda' in self.device.type:
+                        torch.cuda.synchronize(self.device)
+
+                    for i, iou in enumerate(ious):
+                        if isnan(iou):
+                            iou = 0.
+                        self.val_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    # log mean IoU
+                    self.val_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                    #AB: log into tensorbaord
+                    self.val_logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                    self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                    self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                    self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                    self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                    self.val_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                    self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
+                    self.val_logger.add_scalar('acc/train', acc*100, self.global_step)
+                    
+                    print('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), ious.mean(), acc*100))
+
+                    # Log file
+                    if config.saving:
+                        with open(join(config.saving_path, 'training.txt'), "a") as file:
+                            file.write('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), ious.mean(), acc*100))
+
+                    self.global_step += 1
+                
+                train_acc_mean = train_acc_mean/4
+                val_acc_mean = val_acc_mean/4
+                train_iou_mean = train_iou_mean/4
+                val_iou_mean = val_iou_mean/4
+                self.train_logger.add_scalar('report/acc', train_acc_mean*100, epoch)
+                self.val_logger.add_scalar('report/acc', val_acc_mean*100, epoch)
+                self.train_logger.add_scalar('report/mean_ious', train_iou_mean*100, epoch)
+                self.val_logger.add_scalar('report/mean_ious', val_iou_mean*100, epoch)
+                if config.saving:
+                    with open(join(config.saving_path, 'training.txt'), "a") as file:
+                        file.write('Training_acc:{0:.3f}, Validation_acc:{1:.3f}\n'.format(train_acc_mean*100,val_acc_mean*100))
+                    
             
 
 
@@ -389,19 +473,19 @@ class ModelTrainerDGCNN:
                 for i, iou in enumerate(ious):
                     if isnan(iou):
                         iou = 0.
-                    self.logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                self.logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
                 #AB: log into tensorbaord
-                self.logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                self.logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
+                self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
                 
-                self.logger.add_scalar('acc/train', acc*100, self.global_step)
+                self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 self.global_step += 1
 
                 #print('Step:{0:4d}, total_loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
