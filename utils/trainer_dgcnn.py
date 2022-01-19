@@ -47,7 +47,8 @@ class ModelTrainerDGCNN:
         self.global_step = 0
         self.step = 0
 
-        self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
+        # self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
+        self.optimizer = torch.optim.Adam(net.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
         if config.lr_scheduler == True:
             milestones = [200, 400, 600]
             self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
@@ -276,7 +277,8 @@ class ModelTrainerDGCNN:
                 nan_idx = torch.isnan(ious)
                 ious[nan_idx] = 0.
                 train_acc_mean += acc         
-                train_iou_mean += ious.mean()
+                meanIOU = ious.sum()/torch.count_nonzero(ious)
+                train_iou_mean += meanIOU
                 loss.backward()
                 # if config.grad_clip_norm > 0:
                 #     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
@@ -292,7 +294,7 @@ class ModelTrainerDGCNN:
                         iou = 0.
                     self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.train_logger.add_scalar('ious/meanIoU', meanIOU, self.global_step)    
                 #AB: log into tensorbaord
                 self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
                 self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
@@ -303,12 +305,12 @@ class ModelTrainerDGCNN:
                 self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
                 self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 
-                print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), ious.mean(), acc*100))
+                print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
 
                 # Log file
                 if config.saving:
                     with open(join(config.saving_path, 'training.txt'), "a") as file:
-                        file.write('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), ious.mean(), acc*100))
+                        file.write('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), meanIOU, acc*100))
 
                 self.global_step += 1
 
@@ -362,7 +364,8 @@ class ModelTrainerDGCNN:
                     nan_idx = torch.isnan(ious)
                     ious[nan_idx] = 0.
                     val_acc_mean+=acc
-                    val_iou_mean += ious.mean()
+                    meanIOU = ious.sum()/torch.count_nonzero(ious)
+                    val_iou_mean += meanIOU
                     if 'cuda' in self.device.type:
                         torch.cuda.synchronize(self.device)
 
@@ -371,7 +374,7 @@ class ModelTrainerDGCNN:
                             iou = 0.
                         self.val_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
                     # log mean IoU
-                    self.val_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                    self.val_logger.add_scalar('ious/meanIoU', meanIOU, self.global_step)    
                     #AB: log into tensorbaord
                     self.val_logger.add_scalar('Loss/total', loss.item(), self.global_step)
                     self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
@@ -382,12 +385,12 @@ class ModelTrainerDGCNN:
                     self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
                     self.val_logger.add_scalar('acc/train', acc*100, self.global_step)
                     
-                    print('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), ious.mean(), acc*100))
+                    print('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
 
                     # Log file
                     if config.saving:
                         with open(join(config.saving_path, 'training.txt'), "a") as file:
-                            file.write('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), ious.mean(), acc*100))
+                            file.write('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), meanIOU, acc*100))
 
                     self.global_step += 1
                 
