@@ -217,7 +217,7 @@ class DGCNN_semseg(nn.Module):
         self.conv5 = nn.Sequential(nn.Conv2d(64*2, 64, kernel_size=1, bias=False),
                                    self.bn5,
                                    nn.LeakyReLU(negative_slope=0.2))
-        self.conv6 = nn.Sequential(nn.Conv1d(192, emb_dims, kernel_size=1, bias=False),
+        self.conv6 = nn.Sequential(nn.Conv1d(64*3, emb_dims, kernel_size=1, bias=False),
                                    self.bn6,
                                    nn.LeakyReLU(negative_slope=0.2))
         self.conv7 = nn.Sequential(nn.Conv1d(emb_dims+64*3, 512, kernel_size=1, bias=False),

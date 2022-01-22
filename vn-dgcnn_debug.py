@@ -7,8 +7,8 @@ import os
 import numpy as np
 
 from datasets.semantic_kitti_dataset import SemanticKittiDataSet
-from models.dgcnn_sem_seg import DGCNN_semseg
-from utils.trainer_dgcnn import ModelTrainerDGCNN
+from models.vnDGCNN_sem_seg import vnDGCNN
+from utils.trainer_vnDGCNN import ModelTrainervnDGCNN
 from utils.config import Config
 from models.dgcnn_utils import get_model_parameters
 
@@ -29,12 +29,12 @@ if __name__ == '__main__':
     DATASET_PATH = './data'
 
  
-    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=16, augmentation='aligned',verbose=False)
-    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=16, augmentation='z',verbose=False)
+    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=4, augmentation='aligned',verbose=False)
+    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=4, augmentation='z',verbose=False)
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
 
-    net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
+    net=vnDGCNN(train_set.label_values, train_set.ignored_labels, input_feature_dims=3)
     num_parameters = get_model_parameters(net)
     print('Number of model parameters:', num_parameters)
 
@@ -44,10 +44,28 @@ if __name__ == '__main__':
     config.max_epoch = 50000
     config.checkpoint_gap = 50
     config.lr_scheduler = False      # multistep scheduler: milestones=[200, 400, 600], gamma=0.45
-    # config.saving_path = './results/dgcnn/Expriments0119/'+'z-so3'
-    config.saving_path = './results/dgcnn/Expriments0119-CEloss/'+'I-z'
+    config.saving_path = './results/vndgcnn/Expriments0119-CEloss/'+'I-z'
     
-    # Pretrained weights of both dgcnn and loss heads
-    chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
-    trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, finetune=True, on_gpu=config.on_gpu)
+    trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
     trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='CEloss')#4DPLSloss, CEloss
+
+    # for batch in train_loader:
+    #     # move to device (GPU)
+    #     sample_gpu ={}
+    #     if config.on_gpu and torch.cuda.is_available():
+    #         print('On GPU')
+    #         device = torch.device("cuda:0")
+    #     else:
+    #         print('On CPU')
+    #         device = torch.device("cpu")
+    #     if 'cuda' in device.type:
+    #         for k, v in batch.items():
+    #             sample_gpu[k] = v.to(device)
+    #     else:
+    #         sample_gpu = batch
+
+    #     outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:3])
+        
+    #     print(outputs.size())
+
+    #     break
