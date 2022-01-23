@@ -119,58 +119,8 @@ class ModelTrainervnDGCNN:
         self.train_logger = SummaryWriter(log_dir=config.saving_path+'/runs/train')
         self.val_logger = SummaryWriter(log_dir=config.saving_path+'/runs/validation')
         return
-
-
-    def train_overfit_oneframe(self, net, train_loader, epochs=1000):
-        net.train()
-
-        # Overfit one frame: 
-        # samples = train_set[0]
-        # in_fts = torch.tensor(samples['in_fts']).unsqueeze(0)
-        # labels = torch.tensor(samples['in_lbls']).type(torch.LongTensor)
-        
-        # Overfit one batch:
-        for batch in train_loader:
-
-            # move to device (GPU)
-            sample_gpu ={}
-            if 'cuda' in self.device.type:
-                for k, v in batch.items():
-                    sample_gpu[k] = v.to(self.device)
-            else:
-                sample_gpu = batch
-
-            in_fts = sample_gpu['in_fts'][:,:,:4]
-            labels = sample_gpu['in_lbls'].type(torch.LongTensor)
-
-            for epoch in range(epochs):
-                
-                self.optimizer.zero_grad()
-                outputs = net(in_fts)
-
-                loss = net.cross_entropy_loss(outputs, labels)
-                ious = net.semantic_seg_metric(outputs, labels)
-                nan_idx = torch.isnan(ious)
-                ious[nan_idx] = 0.
-                acc = net.accuracy(outputs, labels)
-                loss.backward()
-                self.optimizer.step()
-
-                for i, iou in enumerate(ious):
-                    if isnan(iou):
-                        iou = 0.
-                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
-                # log mean IoU
-                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
-                #AB: log into tensorbaord
-                self.train_logger.add_scalar('Loss/CrossEntropy', loss.item(), self.global_step)
-                self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
-                print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
-            
-                self.global_step += 1
-            
-            break
     
+
 
     def train_overfit_4D(self, config, net=None, train_loader=None, val_loader=None, loss_type='4DPLSloss'):
         ################
@@ -194,6 +144,7 @@ class ModelTrainervnDGCNN:
         for epoch in range(config.max_epoch):
             
             # Training loop
+            self.step = 0
             train_acc_mean = 0.
             train_iou_mean = 0.
             # ious = torch.zeros(19)
@@ -267,19 +218,36 @@ class ModelTrainervnDGCNN:
                     self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
                 self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 
-                print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
+                # print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
+                message = 'e{:03d}-i{:04d} => L={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} L_VL2={:.3f} meanIOU={:3.0f}% acc={:3.0f}%\n'
+                print(message.format(epoch, self.step,
+                                        loss.item(),
+                                        net.center_loss.item(),
+                                        net.instance_loss.item(),
+                                        net.variance_loss.item(),
+                                        net.variance_l2.item(),
+                                        100 * meanIOU, 
+                                        100 * acc,))
 
                 # Log file
                 if config.saving:
                     with open(join(config.saving_path, 'training.txt'), "a") as file:
-                        file.write('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), meanIOU, acc*100))
-
+                        file.write(message.format(epoch, self.step,
+                                        loss.item(),
+                                        net.center_loss.item(),
+                                        net.instance_loss.item(),
+                                        net.variance_loss.item(),
+                                        net.variance_l2.item(),
+                                        100 * meanIOU,
+                                        100 * acc,))
+                
+                self.step +=1
                 self.global_step += 1
 
                 # Saving
                 if config.saving:
                     # Get current state dict
-                    save_dict = {'epoch': self.epoch,
+                    save_dict = {'epoch': epoch,
                                 'model_state_dict': net.state_dict(),
                                 'optimizer_state_dict': self.optimizer.state_dict(),
                                 'saving_path': config.saving_path}
@@ -289,8 +257,8 @@ class ModelTrainervnDGCNN:
                     torch.save(save_dict, checkpoint_path)
                     
                     # Save checkpoints occasionally
-                    if (self.epoch + 1) % config.checkpoint_gap == 0:
-                        checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
+                    if (epoch + 1) % config.checkpoint_gap == 0:
+                        checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(epoch + 1))
                         torch.save(save_dict, checkpoint_path)
 
             if epoch%5 == 0:
@@ -359,10 +327,10 @@ class ModelTrainervnDGCNN:
 
                     self.global_step += 1
                 
-                train_acc_mean = train_acc_mean/4
-                val_acc_mean = val_acc_mean/4
-                train_iou_mean = train_iou_mean/4
-                val_iou_mean = val_iou_mean/4
+                train_acc_mean = train_acc_mean/len(train_loader)
+                val_acc_mean = val_acc_mean/len(val_loader)
+                train_iou_mean = train_iou_mean/len(train_loader)
+                val_iou_mean = val_iou_mean/len(val_loader)
                 self.train_logger.add_scalar('report/acc', train_acc_mean*100, epoch)
                 self.val_logger.add_scalar('report/acc', val_acc_mean*100, epoch)
                 self.train_logger.add_scalar('report/mean_ious', train_iou_mean*100, epoch)

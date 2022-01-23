@@ -29,8 +29,8 @@ if __name__ == '__main__':
     DATASET_PATH = './data'
 
  
-    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=4, augmentation='aligned',verbose=False)
-    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=4, augmentation='z',verbose=False)
+    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=80, augmentation='aligned',verbose=False)
+    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=16, augmentation='z',verbose=False)
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
 
@@ -40,32 +40,14 @@ if __name__ == '__main__':
 
     config = Config()
     config.on_gpu = True
-    config.learning_rate = 0.1
-    config.max_epoch = 50000
-    config.checkpoint_gap = 50
+    config.max_epoch = 1000
+    config.checkpoint_gap = 100
     config.lr_scheduler = False      # multistep scheduler: milestones=[200, 400, 600], gamma=0.45
-    config.saving_path = './results/vndgcnn/Expriments0119-CEloss/'+'I-z'
-    
-    trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
-    trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='CEloss')#4DPLSloss, CEloss
-
-    # for batch in train_loader:
-    #     # move to device (GPU)
-    #     sample_gpu ={}
-    #     if config.on_gpu and torch.cuda.is_available():
-    #         print('On GPU')
-    #         device = torch.device("cuda:0")
-    #     else:
-    #         print('On CPU')
-    #         device = torch.device("cpu")
-    #     if 'cuda' in device.type:
-    #         for k, v in batch.items():
-    #             sample_gpu[k] = v.to(device)
-    #     else:
-    #         sample_gpu = batch
-
-    #     outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:3])
+    for lr in [0.1, 0.01, 0.001]:
+        config.learning_rate = lr   
+        config.saving_path = './results/vndgcnn/Expriments0119-'+'4DPLSloss-80/I-z/'+str(config.learning_rate)
         
-    #     print(outputs.size())
+        trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
+        trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
 
-    #     break
+
