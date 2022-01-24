@@ -117,7 +117,8 @@ class ModelTrainervnDGCNN:
 
 
         self.train_logger = SummaryWriter(log_dir=config.saving_path+'/runs/train')
-        self.val_logger = SummaryWriter(log_dir=config.saving_path+'/runs/validation')
+        if config.val_pls == True:
+            self.val_logger = SummaryWriter(log_dir=config.saving_path+'/runs/validation')
         return
     
 
@@ -261,7 +262,7 @@ class ModelTrainervnDGCNN:
                         checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(epoch + 1))
                         torch.save(save_dict, checkpoint_path)
 
-            if epoch%5 == 0:
+            if config.val_pls == True and epoch%5 == 0:
                 print('Validation process...')
 
                 val_acc_mean = 0.
@@ -280,15 +281,14 @@ class ModelTrainervnDGCNN:
                     times = sample_gpu['in_fts'][:,:,8]
 
                     outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:3])
-                    
-                    if loss_type == 'CEloss': # TODO: debug
+                    if loss_type == 'CEloss': 
                         labels = sample_gpu['in_lbls'].type(torch.LongTensor)
                         loss = net.cross_entropy_loss(outputs, labels)
                     if loss_type == '4DPLSloss':
                         loss = net.loss(
                             outputs, centers_output, var_output, embedding, 
                             sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
-                    
+
                     acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
                     ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())               
                     nan_idx = torch.isnan(ious)
@@ -431,9 +431,9 @@ class ModelTrainervnDGCNN:
                 # Backward + optimize
                 loss.backward()
 
-                if config.grad_clip_norm > 0:
-                    # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
-                    torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
+                # if config.grad_clip_norm > 0:
+                #     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
+                #     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
                 if config.lr_scheduler == True:        
                     self.lr_scheduler.step()

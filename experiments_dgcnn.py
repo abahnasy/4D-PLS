@@ -29,7 +29,7 @@ if __name__ == '__main__':
     DATASET_PATH = './data'
 
  
-    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=16, augmentation='aligned',verbose=False)
+    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=40, augmentation='aligned',verbose=False)
     val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=16, augmentation='z',verbose=False)
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
@@ -45,7 +45,7 @@ if __name__ == '__main__':
     config.checkpoint_gap = 50
     config.lr_scheduler = False      # multistep scheduler: milestones=[200, 400, 600], gamma=0.45
     # config.saving_path = './results/dgcnn/Expriments0119/'+'z-so3'
-    config.saving_path = './results/dgcnn/Expriments0119-CEloss/'+'I-z'
+    config.saving_path = './results/dgcnn/Expriments0123-CEloss/'+'I-z'+'test'
     
     # Pretrained weights of both dgcnn and loss heads
     chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
