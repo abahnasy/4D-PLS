@@ -52,7 +52,7 @@ class ModelTrainervnDGCNN:
         if config.lr_scheduler == True:
             milestones = [200, 400, 600]
             # self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
-            self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=2e-5, end_factor=1, total_iters=config.max_epoch, last_epoch=- 1, verbose=True)
+            self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=2e-7, end_factor=1, total_iters=config.max_epoch, last_epoch=- 1, verbose=True)
         # Choose to train on CPU or GPU
         if on_gpu and torch.cuda.is_available():
             print('On GPU')
@@ -140,7 +140,7 @@ class ModelTrainervnDGCNN:
             checkpoint_directory = None
 
         net.to(self.device)
-
+        best_train_acc = 0.
         for epoch in range(config.max_epoch):
             net.train()
             # Training loop
@@ -148,7 +148,6 @@ class ModelTrainervnDGCNN:
             total_loss_mean =0.
             train_acc_mean = 0.
             train_iou_mean = 0.
-            best_train_acc = 0.
             for batch in train_loader:
                 # move to device (GPU)
                 sample_gpu ={}
@@ -266,7 +265,7 @@ class ModelTrainervnDGCNN:
             # save the best model
             if train_acc_mean > best_train_acc:
                 best_train_acc = train_acc_mean
-                checkpoint_path = join(checkpoint_directory, 'best_chkp_{:04d}.tar'.format(epoch + 1))
+                checkpoint_path = join(checkpoint_directory, 'best_chkp.tar')
                 torch.save(save_dict, checkpoint_path)
 
 

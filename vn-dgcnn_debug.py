@@ -45,17 +45,17 @@ if __name__ == '__main__':
     config.max_epoch = 1000
     config.checkpoint_gap = 100
     config.val_pls = False
-    config.lr_scheduler = True      # lr search: 1e-4 - 5 LinearLR / multistep scheduler: milestones=[200, 400, 600], gamma=0.45
-    config.learning_rate = 5   
-    config.saving_path = './results/vndgcnn/Expriments0124/'+'vndgcnn_lr_search'
+    config.lr_scheduler = False      # lr search: 1e-4 - 500 LinearLR / multistep scheduler: milestones=[200, 400, 600], gamma=0.45
+    # config.learning_rate = 500   
+    # config.saving_path = './results/vndgcnn/Expriments0124/'+'vndgcnn_16_lr_search'
     
-    trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
-    trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
+    # trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
+    # trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
 
-    # for lr in [0.05, 0.005,]:
-    #     config.learning_rate = lr   
-    #     config.saving_path = './results/vndgcnn/Expriments0123-'+'4DPLSloss-40/I-z/'+str(config.learning_rate)
+    for lr in [350, 100, 10, 1, 1e-1, 1e-2, 1e-3]:
+        config.learning_rate = lr   
+        config.saving_path = './results/vndgcnn/Expriments0124-'+'lr_search-16/'+str(config.learning_rate)
         
-    #     trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
-    #     trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
+        trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
+        trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
 
