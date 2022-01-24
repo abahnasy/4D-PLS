@@ -52,7 +52,7 @@ class ModelTrainervnDGCNN:
         if config.lr_scheduler == True:
             milestones = [200, 400, 600]
             # self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
-            self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=2e-5, end_factor=1, total_iters=config.max_epoch, last_epoch=- 1, verbose=True)
+            self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=2e-7, end_factor=1, total_iters=config.max_epoch, last_epoch=- 1, verbose=True)
         # Choose to train on CPU or GPU
         if on_gpu and torch.cuda.is_available():
             print('On GPU')
