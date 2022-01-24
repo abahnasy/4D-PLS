@@ -48,11 +48,11 @@ class ModelTrainervnDGCNN:
         self.step = 0
 
         # self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
-        self.optimizer = torch.optim.Adam(net.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
+        self.optimizer = torch.optim.Adam(net.parameters(), lr=config.learning_rate, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
         if config.lr_scheduler == True:
             milestones = [200, 400, 600]
-            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
-
+            # self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
+            self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=2e-5, end_factor=1, total_iters=config.max_epoch, last_epoch=- 1, verbose=True)
         # Choose to train on CPU or GPU
         if on_gpu and torch.cuda.is_available():
             print('On GPU')
@@ -145,16 +145,10 @@ class ModelTrainervnDGCNN:
             net.train()
             # Training loop
             self.step = 0
+            total_loss_mean =0.
             train_acc_mean = 0.
             train_iou_mean = 0.
-            # ious = torch.zeros(19)
-            # total_loss = 0. 
-            # CE_loss = 0.
-            # center_loss = 0.
-            # instance_half_l = 0.
-            # instance_loss = 0.
-            # variance_loss = 0.
-
+            best_train_acc = 0.
             for batch in train_loader:
                 # move to device (GPU)
                 sample_gpu ={}
@@ -163,10 +157,6 @@ class ModelTrainervnDGCNN:
                         sample_gpu[k] = v.to(self.device)
                 else:
                     sample_gpu = batch
-
-                # # Save the batch used in this overfitting experiment
-                # batch_path = join(checkpoint_directory, 'batch.tar')
-                # torch.save(sample_gpu, batch_path)           
 
                 centers = sample_gpu['in_fts'][:,:,4:8]
                 times = sample_gpu['in_fts'][:,:,8]
@@ -189,13 +179,13 @@ class ModelTrainervnDGCNN:
                 train_acc_mean += acc         
                 meanIOU = ious.sum()/torch.count_nonzero(ious)
                 train_iou_mean += meanIOU
+                total_loss_mean += loss.item()
                 loss.backward()
                 # if config.grad_clip_norm > 0:
                 #     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
                 #     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
-                if config.lr_scheduler == True:        
-                    self.lr_scheduler.step()
+                
                 if 'cuda' in self.device.type:
                     torch.cuda.synchronize(self.device)
 
@@ -260,12 +250,33 @@ class ModelTrainervnDGCNN:
                     if (epoch + 1) % config.checkpoint_gap == 0:
                         checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(epoch + 1))
                         torch.save(save_dict, checkpoint_path)
+            
+            # log mean acc and mean iou for an epoch
+            total_loss_mean = total_loss_mean/len(train_loader)
+            train_acc_mean = train_acc_mean/len(train_loader)
+            train_iou_mean = train_iou_mean/len(train_loader)
+            self.train_logger.add_scalar('report/acc', train_acc_mean*100, epoch)
+            self.train_logger.add_scalar('report/mean_ious', train_iou_mean*100, epoch)
+            
+            # update lr_scheduler every epoch
+            if config.lr_scheduler == True:        
+                self.lr_scheduler.step()
+                self.train_logger.add_scalar('report/mean_total_loss', total_loss_mean, epoch)
+            
+            # save the best model
+            if train_acc_mean > best_train_acc:
+                best_train_acc = train_acc_mean
+                checkpoint_path = join(checkpoint_directory, 'best_chkp_{:04d}.tar'.format(epoch + 1))
+                torch.save(save_dict, checkpoint_path)
+
+
 
             if config.val_pls == True and epoch%5 == 0:
                 print('Validation process...')
                 with torch.no_grad():
                     val_acc_mean = 0.
                     val_iou_mean = 0.
+                    val_step = self.global_step
                     for batch in val_loader:
                         # move to device (GPU)
                         sample_gpu ={}
@@ -301,21 +312,21 @@ class ModelTrainervnDGCNN:
                         for i, iou in enumerate(ious):
                             if isnan(iou):
                                 iou = 0.
-                            self.val_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                            self.val_logger.add_scalar('ious/{}'.format(i), iou, val_step)    
                         # log mean IoU
-                        self.val_logger.add_scalar('ious/meanIoU', meanIOU, self.global_step)    
+                        self.val_logger.add_scalar('ious/meanIoU', meanIOU, val_step)    
                         #AB: log into tensorbaord
                         if loss_type == 'CEloss': # TODO: debug
-                            self.val_logger.add_scalar('Loss/cross_entropy_loss', loss.item(), self.global_step)
+                            self.val_logger.add_scalar('Loss/cross_entropy_loss', loss.item(), val_step)
                         if loss_type == '4DPLSloss':
-                            self.val_logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
-                        self.val_logger.add_scalar('acc/train', acc*100, self.global_step)
+                            self.val_logger.add_scalar('Loss/total', loss.item(), val_step)
+                            self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), val_step)
+                            self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), val_step)
+                            self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), val_step)
+                            self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), val_step)
+                            self.val_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), val_step)
+                            self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), val_step)               
+                        self.val_logger.add_scalar('acc/train', acc*100, val_step)
                         
                         print('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
 
@@ -324,15 +335,11 @@ class ModelTrainervnDGCNN:
                             with open(join(config.saving_path, 'training.txt'), "a") as file:
                                 file.write('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), meanIOU, acc*100))
 
-                        self.global_step += 1
+                        val_step += 1
                 
-                train_acc_mean = train_acc_mean/len(train_loader)
                 val_acc_mean = val_acc_mean/len(val_loader)
-                train_iou_mean = train_iou_mean/len(train_loader)
                 val_iou_mean = val_iou_mean/len(val_loader)
-                self.train_logger.add_scalar('report/acc', train_acc_mean*100, epoch)
                 self.val_logger.add_scalar('report/acc', val_acc_mean*100, epoch)
-                self.train_logger.add_scalar('report/mean_ious', train_iou_mean*100, epoch)
                 self.val_logger.add_scalar('report/mean_ious', val_iou_mean*100, epoch)
                 if config.saving:
                     with open(join(config.saving_path, 'training.txt'), "a") as file:

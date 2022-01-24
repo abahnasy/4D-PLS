@@ -30,7 +30,7 @@ if __name__ == '__main__':
     DATASET_PATH = './data'
 
  
-    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=40, augmentation='aligned',verbose=False)
+    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=16, augmentation='aligned',verbose=False)
     val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=16, augmentation='z',verbose=False)
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=1, shuffle=False, pin_memory=True)
@@ -45,9 +45,9 @@ if __name__ == '__main__':
     config.max_epoch = 1000
     config.checkpoint_gap = 100
     config.val_pls = False
-    config.lr_scheduler = False      # multistep scheduler: milestones=[200, 400, 600], gamma=0.45
-    config.learning_rate = 0.1   
-    config.saving_path = './results/vndgcnn/Expriments0124/'+'vndgcnn_gpu_check-40'
+    config.lr_scheduler = True      # lr search: 1e-4 - 5 LinearLR / multistep scheduler: milestones=[200, 400, 600], gamma=0.45
+    config.learning_rate = 5   
+    config.saving_path = './results/vndgcnn/Expriments0124/'+'vndgcnn_lr_search'
     
     trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
     trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
