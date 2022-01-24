@@ -140,7 +140,7 @@ class ModelTrainervnDGCNN:
             checkpoint_directory = None
 
         net.to(self.device)
-
+        best_train_acc = 0.
         for epoch in range(config.max_epoch):
             net.train()
             # Training loop
@@ -148,7 +148,6 @@ class ModelTrainervnDGCNN:
             total_loss_mean =0.
             train_acc_mean = 0.
             train_iou_mean = 0.
-            best_train_acc = 0.
             for batch in train_loader:
                 # move to device (GPU)
                 sample_gpu ={}
@@ -266,7 +265,7 @@ class ModelTrainervnDGCNN:
             # save the best model
             if train_acc_mean > best_train_acc:
                 best_train_acc = train_acc_mean
-                checkpoint_path = join(checkpoint_directory, 'best_chkp_{:04d}.tar'.format(epoch + 1))
+                checkpoint_path = join(checkpoint_directory, 'best_chkp.tar')
                 torch.save(save_dict, checkpoint_path)
 
 

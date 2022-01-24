@@ -428,10 +428,20 @@ class vnDGCNN(nn.Module):
             # reshape centers_gt
             centers_gt = centers_gt.view(num_points*batch_size, -1)
             weights = (centers_gt[:, 0] > 0) * 99 + (centers_gt[:, 0] >= 0) * 1
+            # print('weights size:',weights.size())
+            # print('values in weights:', torch.unique(weights))
+            
             # Reshape
             centers_p = centers_p.view(num_points*batch_size)
-            self.center_loss = weighted_mse_loss(centers_p, centers_gt[:, 0], weights)
+            # print('size of centers_p:',centers_p.size())
+            # print('max of centers_p:', centers_p.max())
+            # print('min of centers_p:', centers_p.min())
 
+            # print('size of centers_gt:',centers_gt.size())
+            # print('max of centers_gt:', centers_gt[:, 0].max())
+            # print('min of centers_gt:', centers_gt[:, 0].min())
+            self.center_loss = weighted_mse_loss(centers_p, centers_gt[:, 0], weights)
+            # print('center loss:', self.center_loss.item())
 
             if not self.pre_train:
                 # d_print("shape of embeddings {}".format(embeddings.shape))
@@ -440,12 +450,13 @@ class vnDGCNN(nn.Module):
                 # variances = torch.squeeze(variances, dim=0)
                 # Reshape
                 embeddings = embeddings.view(batch_size*num_points, -1) # [B,N,256] -> [B*N,256]
-                ins_labels = ins_labels.squeeze().view(batch_size*num_points) # [B,N,1] -> [B*N,]
+                ins_labels = ins_labels.squeeze().view(batch_size*num_points) # [B,N,1] -> [B*N,] ground truth
+                # print('values in ins_labels:', torch.unique(ins_labels))
                 self.instance_half_loss = instance_half_loss(embeddings, ins_labels)
                 self.instance_half_loss /= batch_size
                 # Reshape
                 variances = variances.view(batch_size*num_points, -1) # [B,N,260] -> [B*N,260]
-                
+                # print('variances size:', variances.size())
                 self.instance_loss = iou_instance_loss(
                     centers_p, embeddings, variances, ins_labels, 
                     points.view(batch_size*num_points, -1),
