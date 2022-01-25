@@ -35,8 +35,8 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=1, shuffle=False, pin_memory=True)
 
-    # net=vnDGCNN(train_set.label_values, train_set.ignored_labels, input_feature_dims=3)
-    net = VNDGCNN(train_set.label_values,train_set.ignored_labels)
+    net=vnDGCNN(train_set.label_values, train_set.ignored_labels, input_feature_dims=3)
+    # net = VNDGCNN(train_set.label_values,train_set.ignored_labels)
     num_parameters = get_model_parameters(net)
     print('Number of model parameters:', num_parameters)
 
@@ -45,6 +45,23 @@ if __name__ == '__main__':
     config.max_epoch = 1000
     config.checkpoint_gap = 100
     config.val_pls = False
+    config.lr_scheduler = True      # lr search: 1e-4 - 5 LinearLR / multistep scheduler: milestones=[200, 400, 600], gamma=0.45
+    config.learning_rate = 5   
+    # config.saving_path = './results/vndgcnn/Expriments0124/'+'vndgcnn_lr_search'
+    
+    for batch in train_loader:
+        sample_gpu = batch
+        centers = sample_gpu['in_fts'][:,:,4:8]
+        times = sample_gpu['in_fts'][:,:,8]
+
+        outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:3])
+
+        loss = net.loss(outputs, centers_output, var_output, embedding, 
+                        sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)
+        break
+
+
+
     config.lr_scheduler = False      # lr search: 1e-4 - 500 LinearLR / multistep scheduler: milestones=[200, 400, 600], gamma=0.45
     # config.learning_rate = 500   
     # config.saving_path = './results/vndgcnn/Expriments0124/'+'vndgcnn_16_lr_search'

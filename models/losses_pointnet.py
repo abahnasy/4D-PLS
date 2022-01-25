@@ -121,7 +121,7 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
     assert embeddings.shape[1] == variances.shape[1], "error"
 
     for instance in instances:
-        if instance == 0:
+        if instance == 0:           # why ignore 0s?
             continue
         else:
             ins_idxs = torch.where(ins_labels == instance)
@@ -131,7 +131,7 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
             if range == 0:
                 random_center = 0
             else:
-                random_center = torch.randint(0, range, (1,))
+                random_center = torch.randint(0, range, (1,))   # random integers generated between 0 and range 
 
             idx = ins_idxs[0][indices[random_center]]
             mean = embeddings[idx]  # 1xD
