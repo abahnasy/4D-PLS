@@ -1,13 +1,13 @@
 saving: true
 saving_path:
 train_dataset:
-  num_samples: 16
+  num_samples: 4
   augmentation: align
   balance_classes: false
   requested_sequences:
   - 4
 val_dataset:
-  num_samples: 4
+  num_samples: 1
   augmentation: align
   balance_classes: false
   requested_sequences:
@@ -25,7 +25,7 @@ train_loader:
 val_loader:
   shuffle: false
   batch_size: 1
-  num_workers: 4
+  num_workers: 1
   pin_memory: true
 trainer:
   saving: ${saving}
@@ -36,7 +36,7 @@ trainer:
   var_lr: 0.1
   momentum: 0.98
   optimizer:
-    name: adamw
+    name: adam
     learning_rate: 0.01
     weight_decay: 0
   lr_scheduler:

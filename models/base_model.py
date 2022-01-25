@@ -277,26 +277,26 @@ class BaseModel(nn.Module):
 
     def ins_pred(self, predicted, centers_output, var_output, embedding, points=None, times=None):
         """
-        Calculate instance probabilities for each point with considering old predictions also
+        Calculate instance probabilities for each point on current frame
         :param predicted: class labels for each point
         :param centers_output: center predictions
         :param var_output : variance predictions
         :param embedding : embeddings for all points
-        :param prev_instances : instances which detected in previous frames
-        :param next_ins_id : next avaliable ins id
         :param points: xyz location of points
-        :return: instance ids for all points, and new instances and next available ins_id
+        :return: instance ids for all points
         """
-        
-        raise NotImplementedError
-        #AB: TODO: investigate later
+        #predicted = torch.argmax(outputs.data, dim=1)
+
         if var_output.shape[1] - embedding.shape[1] > 4:
             global_emb, _ = torch.max(embedding, 0, keepdim=True)
             embedding = torch.cat((embedding, global_emb.repeat(embedding.shape[0], 1)), 1)
+
         if  var_output.shape[1] - embedding.shape[1] == 3:
             embedding = torch.cat((embedding, points[0]), 1)
         if  var_output.shape[1] - embedding.shape[1] == 4:
-            embedding = torch.cat((embedding, points[0], times), 1)
+            # embedding = torch.cat((embedding, points[0], times), 1)
+            #AB: removed the indexing of points, done before calling the function 
+            embedding = torch.cat((embedding, points, times), 1)
 
         if var_output.shape[1] == 3:
             embedding = points[0]
@@ -304,28 +304,40 @@ class BaseModel(nn.Module):
             embedding = torch.cat((points[0], times), 1)
 
         ins_prediction = torch.zeros_like(predicted)
-        counter = 0
-        ins_id = 1
+
+        counter = 0 # AB: used to search for the suitable instance center within certain group of points
+        ins_id = 1 # label number to be assigned
         while True:
+            # AB: collect points for things class and still not assigned an instance label
             ins_idxs = torch.where((predicted < 9) & (predicted != 0) & (ins_prediction == 0))
-            if len(ins_idxs[0]) == 0: break
+            #AB: if there is no remaining unlabeled points, break
+            if len(ins_idxs[0]) == 0:
+                break
+            #AB: for chosen points, get the center scroes, embeddings and variances
             ins_centers = centers_output[ins_idxs]
             ins_embeddings = embedding[ins_idxs]
             ins_variances = var_output[ins_idxs]
             if counter == 0:
+                # AB: sort points according to their center prob, highest first
                 sorted, indices = torch.sort(ins_centers, 0, descending=True)  # center score of instance classes
-            # AB: can't understand this termination condition ?!
-            if sorted[0+counter] < 0.1 or (ins_id == 1 and sorted[0] < 0.7): break
+            if sorted[0+counter] < 0.1 or (ins_id ==1 and sorted[0] < 0.7):
+                break
+            # AB: get the point with the higest score and consider it the center of the object
             idx = indices[0+counter]
             mean = ins_embeddings[idx]
             var = ins_variances[idx]
+            #probs = pdf_normal(ins_embeddings, mean, var)
+            # AB: measure the likelihood of other points belong to this instance
             probs = new_pdf_normal(ins_embeddings, mean, var)
+            # AB: choose points with probs > 0.5 as part of this instance
             ins_points = torch.where(probs >= 0.5)
+            # AB: if you didn't find points, choose another point as center and redo calculations
             if ins_points[0].size()[0] < 2:
                 counter +=1
                 if counter == sorted.shape[0]:
                     break
                 continue
+            # AB: assign the instance id to the selected points
             ids = ins_idxs[0][ins_points[0]]
             ins_prediction[ids] = ins_id
             counter = 0

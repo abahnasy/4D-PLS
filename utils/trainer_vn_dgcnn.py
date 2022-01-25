@@ -591,6 +591,7 @@ class ModelTrainerVNDGCNN:
         val_i = 0
         c_ious = []
         s_ious = []
+        subsampled_acc = []
         # o_scores = []
         # Start validation loop
         for i, batch in enumerate(val_loader):
@@ -611,10 +612,14 @@ class ModelTrainerVNDGCNN:
                 sample_gpu['in_fts'] = sample_gpu['in_fts'][:,:,:3].transpose(2,1) #TODO: fix the feature handling with the dataloader !
                 # Forward pass
                 outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'])
-                
+                # get the performance over the subsampled point cloud (the one used in the backbone !)
+                acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+                subsampled_acc.append(acc)
+                # TODO: get mIOU metrics for subsampled point cloud
+
                 probs = softmax(outputs.view(-1, 19)).cpu().detach().numpy()
                 #AB: why ignoring the instance labels before epoch 50 ?!
-                if self.epoch > 50:
+                if self.epoch > -1: # TODO: change later to 50
                     # Insert false columns for ignored labels
                     for l_ind, label_value in enumerate(val_loader.dataset.label_values):
                         if label_value in val_loader.dataset.ignored_labels:
@@ -622,7 +627,17 @@ class ModelTrainerVNDGCNN:
                     preds = val_loader.dataset.label_values[np.argmax(probs, axis=1)]
                     preds = torch.from_numpy(preds)
                     preds.to(outputs.device)
-                    ins_preds = net.ins_pred(preds, centers_output, var_output, embedding, batch.points, batch.times.unsqueeze(1))
+                    # d_print(embedding.squeeze(0).shape)
+                    # d_print(batch['in_pts'][0].to(embedding.device).shape)
+                    # d_print(times.squeeze(0).unsqueeze(1).to(embedding.device).shape)
+                    ins_preds = net.ins_pred(
+                        preds, 
+                        centers_output.squeeze(0), 
+                        var_output.squeeze(0), 
+                        embedding.squeeze(0), 
+                        batch['in_pts'][0].to(embedding.device), 
+                        times.squeeze(0).unsqueeze(1).to(embedding.device)
+                    )
                 else:
                     ins_preds = torch.zeros(outputs.shape[1]) # outputs shape: (B, num_points, num_classes)
             # Get probs and labels
@@ -684,11 +699,6 @@ class ModelTrainerVNDGCNN:
                 
                 
                 center_gt = centers_gt[:, 0]
-                d_print(">>>>>>>>>")
-                d_print(proj_mask.shape)
-                d_print("check mask {}".format(np.sum(proj_mask)))
-                d_print(center_gt.shape)
-                d_print(center_preds.shape)
                 c_iou = (np.sum(np.logical_and(center_preds > 0.5, center_gt > 0.5))) / \
                         (np.sum(center_preds > 0.5) + np.sum(center_gt > 0.5) + 1e-10)
                 c_ious.append(c_iou)
@@ -707,6 +717,12 @@ class ModelTrainerVNDGCNN:
                 val_i += 1
                 i0 += num_points
 
+        # Plot the metrics over the subsampled point cloud
+        mean_acc = np.array(subsampled_acc).mean()
+        self.val_logger.add_scalar('acc', mean_acc*100, self.global_step)
+
+        #TODO: plot mIOU 
+        
         # Confusions for our subparts of validation set
         Confs = np.zeros((len(predictions), nc_tot, nc_tot), dtype=np.int32)
         for i, (preds, truth) in enumerate(zip(predictions, targets)):

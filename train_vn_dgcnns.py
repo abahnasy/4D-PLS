@@ -66,6 +66,10 @@ def my_app(cfg : DictConfig) -> None:
         batch_size= cfg.train_loader.batch_size, 
         num_workers=4, 
         pin_memory=True)
+
+    assert cfg.val_loader.batch_size == 1, "Val should be done using batch of size 1 only !"
+    assert cfg.val_loader.shuffle == False, "Val data should be handled in sequential manner !"
+    
     val_loader = DataLoader(
         val_set, shuffle = cfg.val_loader.shuffle, 
         batch_size= cfg.val_loader.batch_size, 
