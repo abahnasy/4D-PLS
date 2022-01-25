@@ -65,13 +65,13 @@ class IOStream():
 
 
 def get_model_parameters(model):
-    total_parameters = 0
-    for layer in list(model.parameters()):
-        layer_parameter = 1
-        for l in list(layer.size()):
-            layer_parameter *= l
-        total_parameters += layer_parameter
-    return total_parameters
+    # total_parameters = 0
+    # for layer in list(model.parameters()):
+    #     layer_parameter = 1
+    #     for l in list(layer.size()):
+    #         layer_parameter *= l
+    #     total_parameters += layer_parameter
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 def rotate_pointcloud(config, points, angle_range_z=60):

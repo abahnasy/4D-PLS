@@ -121,26 +121,27 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
     assert embeddings.shape[1] == variances.shape[1], "error"
 
     for instance in instances:
-        if instance == 0:           # why ignore 0s?
+        if instance == 0:           
             continue
         else:
-            ins_idxs = torch.where(ins_labels == instance)
-            ins_centers = centers_p[ins_idxs]
+            ins_idxs = torch.where(ins_labels == instance)      # return tuple of tensors, each containing the indices (in that dimension) of all fulfilled elements of input
+            ins_centers = centers_p[ins_idxs]                   # objectness scores of points belonging to this instance
             sorted, indices = torch.sort(ins_centers, 0, descending=True)
             range = torch.sum(sorted > 0.9)
             if range == 0:
                 random_center = 0
             else:
-                random_center = torch.randint(0, range, (1,))   # random integers generated between 0 and range 
-
-            idx = ins_idxs[0][indices[random_center]]
+                random_center = torch.randint(0, range, (1,))   # random integers generated between 0 and range, size=(1,)
+            
+            # d_print(instances)
+            # d_print(ins_idxs[0].shape)
+            idx = ins_idxs[0][indices[random_center]]           # the index of one of the points with highest objectness scores
             mean = embeddings[idx]  # 1xD
             var = variances[idx]
-
-            labels = (ins_labels == instance) * 1.0
-
             probs = new_pdf_normal(embeddings, mean, var)
 
+            labels = (ins_labels == instance) * 1.0             # shape[B*N] if the point belongs to the instance
+            # d_print(torch.sum(ins_labels == 0))
             ratio = torch.sum(ins_labels == 0)/(torch.sum(ins_labels == instance)*1.0+ torch.sum(probs > 0.5))
             weights = ((ins_labels == instance) | (probs >0.5)) * ratio + (ins_labels >= 0) * 1 #new loss
             loss = loss + weighted_mse_loss(probs, labels, weights)

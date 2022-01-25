@@ -232,7 +232,7 @@ class DGCNN_semseg(nn.Module):
         # add the prediction heads
         from models.blocks import UnaryBlock
         self.head_mlp = UnaryBlock(out_dim, self.first_features_dim, False, 0)
-        self.head_var = UnaryBlock(self.first_features_dim, out_dim + self.free_dim, False, 0)
+        self.head_var = UnaryBlock(self.first_features_dim, self.first_features_dim + self.free_dim, False, 0)
         self.head_softmax = UnaryBlock(self.first_features_dim, self.C, False, 0)
         self.head_center = UnaryBlock(self.first_features_dim, 1, False, 0, False)
 
