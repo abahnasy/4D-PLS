@@ -280,7 +280,7 @@ class vnDGCNN(nn.Module):
         # add the prediction heads
         from models.blocks import UnaryBlock
         self.head_mlp = UnaryBlock(out_dim, self.first_features_dim, False, 0)
-        self.head_var = UnaryBlock(self.first_features_dim, out_dim + self.free_dim, False, 0)
+        self.head_var = UnaryBlock(self.first_features_dim, self.first_features_dim + self.free_dim, False, 0)
         self.head_softmax = UnaryBlock(self.first_features_dim, self.C, False, 0)
         self.head_center = UnaryBlock(self.first_features_dim, 1, False, 0, False)
 
@@ -456,7 +456,6 @@ class vnDGCNN(nn.Module):
                 self.instance_half_loss /= batch_size
                 # Reshape
                 variances = variances.view(batch_size*num_points, -1) # [B,N,260] -> [B*N,260]
-                # print('variances size:', variances.size())
                 self.instance_loss = iou_instance_loss(
                     centers_p, embeddings, variances, ins_labels, 
                     points.view(batch_size*num_points, -1),
