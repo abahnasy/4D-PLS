@@ -1,45 +1,51 @@
+saving: true
+saving_path:
 train_dataset:
-  num_samples: 4
-  augmentation: 'aligned'
-  balance_classes: True
-  requested_sequences: [4]
+  num_samples: 16
+  augmentation: align
+  balance_classes: false
+  requested_sequences:
+  - 4
 val_dataset:
   num_samples: 4
-  augmentation: 'z'
-  requested_sequences: [4]
+  augmentation: align
+  balance_classes: false
+  requested_sequences:
+  - 4
+  in_R: 51
 model:
-  name: 'VNDGCNN'
-  pretrained_weights: False
-  freeze_head_weights: False
-
+  name: VNDGCNN
+  pretrained_weights: false
+  freeze_head_weights: false
 train_loader:
-  shuffle: False
+  shuffle: false
   batch_size: 4
   num_workers: 4
-  pin_memory: True
+  pin_memory: true
 val_loader:
-  shuffle: False
+  shuffle: false
   batch_size: 1
   num_workers: 4
-  pin_memory: True
+  pin_memory: true
 trainer:
-  style: 'train' #opts: [overfit, train]
-  task: 'sem_seg' # options: ['pls', 'sem_seg']
-  lr_decays: #dynamic calculations
-  var_lr: 1e-1
+  saving: ${saving}
+  saving_path: ${saving_path}
+  style: train
+  task: pls
+  lr_decays: null
+  var_lr: 0.1
   momentum: 0.98
   optimizer:
-    name: adam #[adam, adamw, sgd, ]
-    learning_rate: 1e-2
-    weight_decay: 0 #1e-4
+    name: adamw
+    learning_rate: 0.01
+    weight_decay: 0
   lr_scheduler:
-    milestones: [20,40,60,80,100]
+    milestones:
+    - 50
+    - 50
+    - 300
     gamma: 0.5
   free_dim: 4
-  # saving:
   max_epoch: 1000
-  grad_clip_norm: 0. #100.0
-  class_w: [
-    # 1,1,1,1,1,1,1,1,0.2,1,1,0.7,1,1,0.6,1,0.6,1,1
-  ]
-
+  grad_clip_norm: 0.0
+  class_w: []

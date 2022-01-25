@@ -1,5 +1,5 @@
 import importlib
-import os
+import os, time
 
 import numpy as np
 import torch
@@ -8,8 +8,6 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from models.vn_dgcnn_sem_seg import VNDGCNN
-from models.vn_dgcnn_v1_sem_seg import VNDGCNN_v1
-from models.vn_dgcnn_v2_sem_seg import VNDGCNN_v2
 from utils.trainer_vn_dgcnn import ModelTrainerVNDGCNN
 from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 from utils.debugging import d_print, write_pc, count_parameters, seed_torch
@@ -37,21 +35,31 @@ def my_app(cfg : DictConfig) -> None:
     else:
         chosen_chkp = None
     # ----------------------------------------------------------------- #
-
+    if cfg.saving:
+        cfg.saving_path = time.strftime('results/Log_%Y-%m-%d_%H-%M-%S', time.gmtime())
+        cfg.saving_path = hydra.utils.to_absolute_path(cfg.saving_path)
+        d_print(os.path.abspath(cfg.saving_path))
     # cfg.trainer.lr_decays = {i: 0.1 ** (1 / 200) for i in range(1, cfg.trainer.max_epoch)}
     print(OmegaConf.to_yaml(cfg))
     # prepare dataset and loaders
     DATASET_PATH = hydra.utils.to_absolute_path('data')
     train_set = SemanticKittiDataSet(
-        path=DATASET_PATH, set='train', num_samples=cfg.train_dataset.num_samples,
+        path=DATASET_PATH, 
+        set='train', 
+        num_samples=cfg.train_dataset.num_samples,
         augmentation=cfg.train_dataset.augmentation,
         requested_sequences=cfg.train_dataset.requested_sequences,
         balance_classes=cfg.train_dataset.balance_classes,
         )
     val_set = SemanticKittiDataSet(
-        path=DATASET_PATH, set='val', 
+        path=DATASET_PATH, 
+        set='val', 
         num_samples=cfg.val_dataset.num_samples,
-        augmentation=cfg.val_dataset.augmentation
+        augmentation=cfg.val_dataset.augmentation,
+        requested_sequences=cfg.val_dataset.requested_sequences,
+        balance_classes=cfg.val_dataset.balance_classes,
+        saving_path=cfg.saving_path,
+        in_R = cfg.val_dataset.in_R
         )
     train_loader = DataLoader(
         train_set, shuffle = cfg.train_loader.shuffle, 
@@ -79,7 +87,7 @@ def my_app(cfg : DictConfig) -> None:
     count_parameters(net)
     
 
-
+    d_print("launcing the training")
     trainer = ModelTrainerVNDGCNN(net, cfg.trainer, chkp_path=chosen_chkp)
     if cfg.trainer.style == 'train':
         trainer.train(net, train_loader, val_loader, cfg.trainer)

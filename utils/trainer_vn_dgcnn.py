@@ -1,4 +1,5 @@
 
+import hydra
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
@@ -18,7 +19,7 @@ from utils.ply import read_ply, write_ply
 # Metrics
 from utils.metrics import IoU_from_confusions, fast_confusion
 from utils.config import Config, bcolors
-from sklearn.neighbors import KDTree
+# from sklearn.neighbors import KDTree
 
 # from models.blocks import KPConv
 
@@ -50,6 +51,17 @@ class ModelTrainerVNDGCNN:
         :param finetune: finetune from checkpoint (True) or restore training from checkpoint (False)
         :param on_gpu: Train on GPU or CPU
         """
+
+        # Path of the result folder
+        if config.saving:
+            if config.saving_path is None:
+                raise ValueError("shouldn't be None !")
+                config.saving_path = config.saving_path
+                config.saving_path = hydra.utils.to_absoulte_path(config.saving_path)
+                d_print("Saving path is {}".format(config.saving_path))
+            if not exists(config.saving_path):
+                makedirs(config.saving_path)
+            # config.save()
 
         # Writer will output to ./runs/ directory by default
         self.train_logger = SummaryWriter(log_dir="vn_dgcnn_train")
@@ -304,7 +316,7 @@ class ModelTrainerVNDGCNN:
                         self.validation_sem_seg(net, val_loader, config)
                     elif config.task == 'pls':
                         pass
-                        # self.validation_pls(net, val_loader, config)
+                        self.validation_pls(net, val_loader, config)
                     else:
                         raise NotImplementedError
                     #TODO: implement the mini validation function 
@@ -564,50 +576,183 @@ class ModelTrainerVNDGCNN:
             # Update epoch
             self.epoch += 1
 
-    def validation_pls(self, net, val_loader, batch_centers, config):
-        raise NotImplementedError
+    def validation_pls(self, net, val_loader, config):
+        """ Validation function, gives ious and accuracy
+        """
         softmax = torch.nn.Softmax(1)
-        
+        # Create folder for validation predictions
+        if not exists(join(config.saving_path, 'val_preds')):
+            makedirs(join(config.saving_path, 'val_preds'))
         # Number of classes including ignored labels
         nc_tot = val_loader.dataset.num_classes
+        predictions = []
+        targets = []
+        # inds = []
+        val_i = 0
         c_ious = []
         s_ious = []
-        
+        # o_scores = []
+        # Start validation loop
         for i, batch in enumerate(val_loader):
-            # get batch
-            sample_gpu = {}
-            if 'cuda' in self.device.type:
-                for k, v in batch.items():
-                    sample_gpu[k] = v.to(self.device)
-            else:
-                sample_gpu = batch
-                # Forward pass
+            batch_size = batch['in_fts'].shape[0]
+            num_points = batch['in_fts'].shape[1]
+            # Forward pass
             with torch.no_grad():
-                outputs, centers_output, var_output, embedding = net(batch, config)
-                probs = softmax(outputs).cpu().detach().numpy()
+                sample_gpu = {}
+                if 'cuda' in self.device.type:
+                    for k, v in batch.items():
+                        if k in ['in_fts', 'in_lbls', 'in_slbls']:
+                            sample_gpu[k] = v.to(self.device)
+                else:
+                    sample_gpu = batch
+                centers = sample_gpu['in_fts'][:,:,4:8]
+                times = sample_gpu['in_fts'][:,:,8]
+                # prepare inputs for PointNet Architecture
+                sample_gpu['in_fts'] = sample_gpu['in_fts'][:,:,:3].transpose(2,1) #TODO: fix the feature handling with the dataloader !
+                # Forward pass
+                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'])
+                
+                probs = softmax(outputs.view(-1, 19)).cpu().detach().numpy()
+                #AB: why ignoring the instance labels before epoch 50 ?!
+                if self.epoch > 50:
+                    # Insert false columns for ignored labels
+                    for l_ind, label_value in enumerate(val_loader.dataset.label_values):
+                        if label_value in val_loader.dataset.ignored_labels:
+                            probs = np.insert(probs, l_ind, 0, axis=1)
+                    preds = val_loader.dataset.label_values[np.argmax(probs, axis=1)]
+                    preds = torch.from_numpy(preds)
+                    preds.to(outputs.device)
+                    ins_preds = net.ins_pred(preds, centers_output, var_output, embedding, batch.points, batch.times.unsqueeze(1))
+                else:
+                    ins_preds = torch.zeros(outputs.shape[1]) # outputs shape: (B, num_points, num_classes)
+            # Get probs and labels
+            stk_probs = softmax(outputs.view(-1,19)).cpu().detach().numpy()
+            centers_output = centers_output.view(batch_size*num_points, -1)
+            centers_output = centers_output.cpu().detach().numpy()
+            ins_preds = ins_preds.cpu().detach().numpy()
+            s_inds_list = batch['s_ind'] # list of sequences in the batch
+            f_inds_list = batch['f_ind'] # list of the frames in the batch
+            proj_inds_list = batch['proj_inds']
+            # loop for every frame in the batch
+            i0 = 0
+            # Get predictions and labels per volume in batch
+            for volume_idx in range(batch_size):
+                probs = stk_probs[i0:i0 + num_points]
+                center_probs  = centers_output[i0:i0 + num_points]
+                ins_probs = ins_preds[i0:i0 + num_points]
+                s_ind = s_inds_list[volume_idx]
+                f_ind = f_inds_list[volume_idx]
+                proj_inds = proj_inds_list[volume_idx]
+                proj_mask = batch['reproj_mask'][volume_idx].numpy()
+                frame_labels = batch['val_labels_list'][volume_idx].numpy() # original unsampled point cloud labels
+                centers_gt = batch['val_center_label_list'][volume_idx].numpy()
+                # project predictions on the original frame points
+                proj_probs = probs[proj_inds]
+                proj_center_probs = center_probs[proj_inds]
+                proj_ins_probs = ins_probs[proj_inds]
+                # Insert false columns for ignored labels
                 for l_ind, label_value in enumerate(val_loader.dataset.label_values):
                     if label_value in val_loader.dataset.ignored_labels:
-                        probs = np.insert(probs, l_ind, 0, axis=1) # AB: maybe should be done on axis = 2
-                preds = val_loader.dataset.label_values[np.argmax(probs, axis=1)]
-                preds = torch.from_numpy(preds)
-                preds.to(outputs.device)
-                ins_preds = net.ins_pred(preds, centers_output, var_output, embedding, batch.points, batch.times.unsqueeze(1))
-            # Get probs and labels
-            stk_probs = softmax(outputs).cpu().detach().numpy()
-            centers_output = centers_output.cpu().detach().numpy()
-            centers_output = centers_output
-            ins_preds = ins_preds.cpu().detach().numpy()
+                        probs = np.insert(probs, l_ind, 0, axis=1)
+                # Predicted labels
+                preds = val_loader.dataset.label_values[np.argmax(proj_probs, axis=1)]
 
-            frame_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
-            center_preds = np.zeros(frame_labels.shape, dtype=np.float32)
-            ins_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
+                # Save predictions in a binary file
+                filename = '{:s}_{:07d}.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
+                filename_c = '{:s}_{:07d}_c.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
+                filename_i = '{:s}_{:07d}_i.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
+                filepath = join(config.saving_path, 'val_preds', filename)
+                filepath_c = join(config.saving_path, 'val_preds', filename_c)
+                filepath_i = join(config.saving_path, 'val_preds', filename_i)
 
-            centers_gt = batch_centers.cpu().detach().numpy()
-            center_gt = centers_gt[:, 0]
-            c_iou = (np.sum(np.logical_and(center_preds > 0.5, center_gt > 0.5))) / \
+                if exists(filepath):
+                    frame_preds = np.load(filepath)
+                    center_preds = np.load(filepath_c)
+                    ins_preds = np.load(filepath_i)
+
+                else:
+                    frame_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
+                    center_preds = np.zeros(frame_labels.shape, dtype=np.float32)
+                    ins_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
+
+                center_preds[proj_mask] = proj_center_probs[:, 0]
+                frame_preds[proj_mask] = preds.astype(np.uint8)
+                ins_preds[proj_mask] = proj_ins_probs
+                np.save(filepath, frame_preds)
+                np.save(filepath_c, center_preds)
+                np.save(filepath_i, ins_preds)
+                
+                
+                center_gt = centers_gt[:, 0]
+                d_print(">>>>>>>>>")
+                d_print(proj_mask.shape)
+                d_print("check mask {}".format(np.sum(proj_mask)))
+                d_print(center_gt.shape)
+                d_print(center_preds.shape)
+                c_iou = (np.sum(np.logical_and(center_preds > 0.5, center_gt > 0.5))) / \
                         (np.sum(center_preds > 0.5) + np.sum(center_gt > 0.5) + 1e-10)
-            c_ious.append(c_iou)
-            s_ious.append(np.sum(center_preds > 0.5))
+                c_ious.append(c_iou)
+                s_ious.append(np.sum(center_preds > 0.5))
+
+                # Update validation confusions
+                frame_C = fast_confusion(frame_labels,
+                                         frame_preds.astype(np.int32),
+                                         val_loader.dataset.label_values)
+                val_loader.dataset.val_confs[s_ind][f_ind, :, :] = frame_C
+                
+                # Stack all prediction for this epoch
+                predictions += [preds]
+                targets += [frame_labels[proj_mask]] #AB: why retrieving from the original point cloud, you can just use the accompained labels for the batch?!
+                # inds += [f_inds[b_i, :]]
+                val_i += 1
+                i0 += num_points
+
+        # Confusions for our subparts of validation set
+        Confs = np.zeros((len(predictions), nc_tot, nc_tot), dtype=np.int32)
+        for i, (preds, truth) in enumerate(zip(predictions, targets)):
+            # Confusions
+            Confs[i, :, :] = fast_confusion(truth, preds, val_loader.dataset.label_values).astype(np.int32)
+
+        # Sum all confusions
+        C = np.sum(Confs, axis=0).astype(np.float32)
+
+        # Balance with real validation proportions
+        C *= np.expand_dims(val_loader.dataset.class_proportions / (np.sum(C, axis=1) + 1e-6), 1)
+
+        # Remove ignored labels from confusions
+        for l_ind, label_value in reversed(list(enumerate(val_loader.dataset.label_values))):
+            if label_value in val_loader.dataset.ignored_labels:
+                C = np.delete(C, l_ind, axis=0)
+                C = np.delete(C, l_ind, axis=1)
+
+        # Objects IoU
+        IoUs = IoU_from_confusions(C)
+
+        # Sum all validation confusions
+        C_tot = [np.sum(seq_C, axis=0) for seq_C in val_loader.dataset.val_confs if len(seq_C) > 0]
+        C_tot = np.sum(np.stack(C_tot, axis=0), axis=0)
+        # Remove ignored labels from confusions
+        for l_ind, label_value in reversed(list(enumerate(val_loader.dataset.label_values))):
+            if label_value in val_loader.dataset.ignored_labels:
+                C_tot = np.delete(C_tot, l_ind, axis=0)
+                C_tot = np.delete(C_tot, l_ind, axis=1)
+
+        # Objects IoU
+        val_IoUs = IoU_from_confusions(C_tot)
+
+        # Print instance mean
+        mIoU = 100 * np.mean(IoUs)
+        print('subpart mIoU = {:.1f} %'.format(mIoU))
+        mIoU = 100 * np.mean(val_IoUs)
+        print('val mIoU = {:.1f} %'.format(mIoU))
+        cIoU = 200 * np.mean(c_ious)
+        print('val center mIoU = {:.1f} %'.format(cIoU))
+        sIoU = np.mean(s_ious)
+        print('val centers sum  = {:.1f} %'.format(sIoU))
+
+            
+
+
             
 
 
@@ -635,12 +780,9 @@ class ModelTrainerVNDGCNN:
                 # Forward pass
                 outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'])
                 # calculate loss
-                if config.task == 'pls':
-                    raise NotImplementedError
-                elif config.task == 'sem_seg':
-                    loss = net.cross_entropy_loss(outputs, sample_gpu['in_lbls'])
-                    avg_loss.append(loss.item())
-                    # self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
+                loss = net.cross_entropy_loss(outputs, sample_gpu['in_lbls'])
+                avg_loss.append(loss.item())
+                # self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
                 acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
                 avg_acc.append(acc*100)
                 ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
@@ -683,312 +825,3 @@ class ModelTrainerVNDGCNN:
         #     self.slam_segmentation_validation(net, val_loader, config)
         # else:
         #     raise ValueError('No validation method implemented for this network type')
-
-    def slam_segmentation_validation(self, net, val_loader, config, debug=True):
-        """
-        Validation method for slam segmentation models
-        """
-
-        # raise NotImplementedError
-
-        ############
-        # Initialize
-        ############
-
-        t0 = time.time()
-
-        # Do not validate if dataset has no validation cloud
-        if val_loader is None:
-            return
-
-        # Choose validation smoothing parameter (0 for no smothing, 0.99 for big smoothing)
-        val_smooth = 0.95
-        softmax = torch.nn.Softmax(1)
-
-        # Create folder for validation predictions
-        if not exists(join(config.saving_path, 'val_preds')):
-            makedirs(join(config.saving_path, 'val_preds'))
-
-        # initiate the dataset validation containers
-        val_loader.dataset.val_points = []
-        val_loader.dataset.val_labels = []
-
-        # Number of classes including ignored labels
-        nc_tot = val_loader.dataset.num_classes
-
-        #####################
-        # Network predictions
-        #####################
-
-        predictions = []
-        targets = []
-        inds = []
-        val_i = 0
-        c_ious = []
-        s_ious = []
-        o_scores = []
-        t = [time.time()]
-        last_display = time.time()
-        mean_dt = np.zeros(1)
-
-        t1 = time.time()
-
-        # Start validation loop
-        for i, batch in enumerate(val_loader):
-
-            # New time
-            t = t[-1:]
-            t += [time.time()]
-            """
-            if torch.sum(batch.labels==1)  < 100:
-                continue
-            else:
-                print('there is cars !!')
-            """
-            if 'cuda' in self.device.type:
-                batch.to(self.device)
-
-            # Forward pass
-            with torch.no_grad():
-                outputs, centers_output, var_output, embedding = net(batch, config)
-                probs = softmax(outputs).cpu().detach().numpy()
-
-                if not config.pre_train and self.epoch > 50:
-                    for l_ind, label_value in enumerate(val_loader.dataset.label_values):
-                        if label_value in val_loader.dataset.ignored_labels:
-                            probs = np.insert(probs, l_ind, 0, axis=1)
-                    preds = val_loader.dataset.label_values[np.argmax(probs, axis=1)]
-                    preds = torch.from_numpy(preds)
-                    preds.to(outputs.device)
-
-                    ins_preds = net.ins_pred(preds, centers_output, var_output, embedding, batch.points, batch.times.unsqueeze(1))
-                else:
-                    ins_preds = torch.zeros(outputs.shape[0])
-            # Get probs and labels
-            stk_probs = softmax(outputs).cpu().detach().numpy()
-            centers_output = centers_output.cpu().detach().numpy()
-            centers_output = centers_output
-            ins_preds = ins_preds.cpu().detach().numpy()
-            lengths = batch.lengths[0].cpu().numpy()
-            f_inds = batch.frame_inds.cpu().numpy()
-            r_inds_list = batch.reproj_inds
-            r_mask_list = batch.reproj_masks
-            labels_list = batch.val_labels
-
-            torch.cuda.synchronize(self.device)
-
-            # Get predictions and labels per instance
-            # ***************************************
-
-            i0 = 0
-            for b_i, length in enumerate(lengths):
-
-                # Get prediction
-                probs = stk_probs[i0:i0 + length]
-                center_props = centers_output[i0:i0 + length]
-                ins_probs = ins_preds[i0:i0 + length]
-                proj_inds = r_inds_list[b_i]
-                proj_mask = r_mask_list[b_i]
-                frame_labels = labels_list[b_i]
-                s_ind = f_inds[b_i, 0]
-                f_ind = f_inds[b_i, 1]
-
-                # Project predictions on the frame points
-                proj_probs = probs[proj_inds]
-                proj_center_probs = center_props[proj_inds]
-                proj_ins_probs = ins_probs[proj_inds]
-                #proj_offset_probs = offset_probs[proj_inds]
-
-                # Safe check if only one point:
-                if proj_probs.ndim < 2:
-                    proj_probs = np.expand_dims(proj_probs, 0)
-                    proj_center_probs = np.expand_dims(proj_center_probs, 0)
-                    proj_ins_probs = np.expand_dims(proj_ins_probs, 0)
-
-                # Insert false columns for ignored labels
-                for l_ind, label_value in enumerate(val_loader.dataset.label_values):
-                    if label_value in val_loader.dataset.ignored_labels:
-                        proj_probs = np.insert(proj_probs, l_ind, 0, axis=1)
-
-                # Predicted labels
-                preds = val_loader.dataset.label_values[np.argmax(proj_probs, axis=1)]
-
-                # Save predictions in a binary file
-                filename = '{:s}_{:07d}.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
-                filename_c = '{:s}_{:07d}_c.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
-                filename_i = '{:s}_{:07d}_i.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
-                filepath = join(config.saving_path, 'val_preds', filename)
-                filepath_c = join(config.saving_path, 'val_preds', filename_c)
-                filepath_i = join(config.saving_path, 'val_preds', filename_i)
-
-                if exists(filepath):
-                    frame_preds = np.load(filepath)
-                    center_preds = np.load(filepath_c)
-                    ins_preds = np.load(filepath_i)
-
-                else:
-                    frame_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
-                    center_preds = np.zeros(frame_labels.shape, dtype=np.float32)
-                    ins_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
-
-                center_preds[proj_mask] = proj_center_probs[:, 0]
-                frame_preds[proj_mask] = preds.astype(np.uint8)
-                ins_preds[proj_mask] = proj_ins_probs
-                np.save(filepath, frame_preds)
-                np.save(filepath_c, center_preds)
-                np.save(filepath_i, ins_preds)
-
-
-                centers_gt = batch.centers.cpu().detach().numpy()
-                #ins_label_gt = batch.ins_labels.cpu().detach().numpy()
-
-                center_gt = centers_gt[:, 0]
-
-                c_iou = (np.sum(np.logical_and(center_preds > 0.5, center_gt > 0.5))) / \
-                        (np.sum(center_preds > 0.5) + np.sum(center_gt > 0.5) + 1e-10)
-                c_ious.append(c_iou)
-                s_ious.append(np.sum(center_preds > 0.5))
-
-                # Save some of the frame pots
-                if f_ind % 20 == 0:
-                    seq_path = join(val_loader.dataset.path, 'sequences', val_loader.dataset.sequences[s_ind])
-                    velo_file = join(seq_path, 'velodyne', val_loader.dataset.frames[s_ind][f_ind] + '.bin')
-                    frame_points = np.fromfile(velo_file, dtype=np.float32)
-                    frame_points = frame_points.reshape((-1, 4))
-                    write_ply(filepath[:-4] + '_pots.ply',
-                              [frame_points[:, :3], frame_labels, frame_preds],
-                              ['x', 'y', 'z', 'gt', 'pre'])
-
-                # Update validation confusions
-                frame_C = fast_confusion(frame_labels,
-                                         frame_preds.astype(np.int32),
-                                         val_loader.dataset.label_values)
-                val_loader.dataset.val_confs[s_ind][f_ind, :, :] = frame_C
-
-                # Stack all prediction for this epoch
-                predictions += [preds]
-                targets += [frame_labels[proj_mask]]
-                inds += [f_inds[b_i, :]]
-                val_i += 1
-                i0 += length
-
-            # Average timing
-            t += [time.time()]
-            mean_dt = 0.95 * mean_dt + 0.05 * (np.array(t[1:]) - np.array(t[:-1]))
-
-            # Display
-            if (t[-1] - last_display) > 1.0:
-                last_display = t[-1]
-                message = 'Validation : {:.1f}% (timings : {:4.2f} {:4.2f})'
-                print(message.format(100 * i / config.validation_size,
-                                     1000 * (mean_dt[0]),
-                                     1000 * (mean_dt[1])))
-
-        t2 = time.time()
-
-        # Confusions for our subparts of validation set
-        Confs = np.zeros((len(predictions), nc_tot, nc_tot), dtype=np.int32)
-        for i, (preds, truth) in enumerate(zip(predictions, targets)):
-            # Confusions
-            Confs[i, :, :] = fast_confusion(truth, preds, val_loader.dataset.label_values).astype(np.int32)
-
-        t3 = time.time()
-
-        #######################################
-        # Results on this subpart of validation
-        #######################################
-
-        # Sum all confusions
-        C = np.sum(Confs, axis=0).astype(np.float32)
-
-        # Balance with real validation proportions
-        C *= np.expand_dims(val_loader.dataset.class_proportions / (np.sum(C, axis=1) + 1e-6), 1)
-
-        # Remove ignored labels from confusions
-        for l_ind, label_value in reversed(list(enumerate(val_loader.dataset.label_values))):
-            if label_value in val_loader.dataset.ignored_labels:
-                C = np.delete(C, l_ind, axis=0)
-                C = np.delete(C, l_ind, axis=1)
-
-        # Objects IoU
-        IoUs = IoU_from_confusions(C)
-
-        #####################################
-        # Results on the whole validation set
-        #####################################
-
-        t4 = time.time()
-
-        # Sum all validation confusions
-        C_tot = [np.sum(seq_C, axis=0) for seq_C in val_loader.dataset.val_confs if len(seq_C) > 0]
-        C_tot = np.sum(np.stack(C_tot, axis=0), axis=0)
-
-        if debug:
-            s = '\n'
-            for cc in C_tot:
-                for c in cc:
-                    s += '{:8.1f} '.format(c)
-                s += '\n'
-            print(s)
-
-        # Remove ignored labels from confusions
-        for l_ind, label_value in reversed(list(enumerate(val_loader.dataset.label_values))):
-            if label_value in val_loader.dataset.ignored_labels:
-                C_tot = np.delete(C_tot, l_ind, axis=0)
-                C_tot = np.delete(C_tot, l_ind, axis=1)
-
-        # Objects IoU
-        val_IoUs = IoU_from_confusions(C_tot)
-
-        t5 = time.time()
-
-        # Saving (optionnal)
-        if config.saving:
-
-            IoU_list = [IoUs, val_IoUs]
-            file_list = ['subpart_IoUs.txt', 'val_IoUs.txt']
-            for IoUs_to_save, IoU_file in zip(IoU_list, file_list):
-
-                # Name of saving file
-                test_file = join(config.saving_path, IoU_file)
-
-                # Line to write:
-                line = ''
-                for IoU in IoUs_to_save:
-                    line += '{:.3f} '.format(IoU)
-                line = line + '\n'
-
-                # Write in file
-                if exists(test_file):
-                    with open(test_file, "a") as text_file:
-                        text_file.write(line)
-                else:
-                    with open(test_file, "w") as text_file:
-                        text_file.write(line)
-
-        # Print instance mean
-        mIoU = 100 * np.mean(IoUs)
-        print('{:s} : subpart mIoU = {:.1f} %'.format(config.dataset, mIoU))
-        mIoU = 100 * np.mean(val_IoUs)
-        print('{:s} :     val mIoU = {:.1f} %'.format(config.dataset, mIoU))
-        cIoU = 200 * np.mean(c_ious)
-        print('{:s} :     val center mIoU = {:.1f} %'.format(config.dataset, cIoU))
-        sIoU = np.mean(s_ious)
-        print('{:s} :     val centers sum  = {:.1f} %'.format(config.dataset, sIoU))
-
-
-        t6 = time.time()
-
-        # Display timings
-        if debug:
-            print('\n************************\n')
-            print('Validation timings:')
-            print('Init ...... {:.1f}s'.format(t1 - t0))
-            print('Loop ...... {:.1f}s'.format(t2 - t1))
-            print('Confs ..... {:.1f}s'.format(t3 - t2))
-            print('IoU1 ...... {:.1f}s'.format(t4 - t3))
-            print('IoU2 ...... {:.1f}s'.format(t5 - t4))
-            print('Save ...... {:.1f}s'.format(t6 - t5))
-            print('\n************************\n')
-
-        return
