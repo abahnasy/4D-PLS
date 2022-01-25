@@ -31,7 +31,7 @@ class ModelTrainervnDGCNN:
     # Initialization methods
     # ------------------------------------------------------------------------------------------------------------------
 
-    def __init__(self, net, config, chkp_path=None, finetune=False, on_gpu=True):
+    def __init__(self, net, config, chkp_path=None, resume_training=False, finetune=False, on_gpu=True):
         """
         Initialize training parameters and reload previous model for restore/finetune
         :param net: network object
@@ -49,11 +49,7 @@ class ModelTrainervnDGCNN:
 
         # self.optimizer = torch.optim.SGD(net.parameters(), lr=config.learning_rate, momentum=config.momentum, weight_decay=1e-4)
         self.optimizer = torch.optim.Adam(net.parameters(), lr=config.learning_rate, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
-        if config.lr_scheduler == True:
-            # milestones = [200, 400, 600]
-            # self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
-            # self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=2e-7, end_factor=1, total_iters=config.max_epoch, last_epoch=- 1, verbose=True)
-            self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=config.max_epoch, eta_min=0, last_epoch=-1, verbose=True)
+
         # Choose to train on CPU or GPU
         if on_gpu and torch.cuda.is_available():
             print('On GPU')
@@ -66,23 +62,23 @@ class ModelTrainervnDGCNN:
         ##########################
         # Load previous checkpoint
         ##########################
-        if finetune==True:
-            load_encoder_weights = False
-            load_heads = True
+        if resume_training==True:
+            pretrained_model = torch.load(chkp_path, map_location=self.device)
+            self.optimizer.load_state_dict(pretrained_model['optimizer_state_dict']) 
+            net.load_state_dict(pretrained_model['model_state_dict'], strict=True)
+            freezed_layers = ['head_mlp.mlp.weight', 
+                            'head_mlp.batch_norm.bias',
+                            'head_var.mlp.weight',
+                            'head_var.batch_norm.bias',
+                            'head_softmax.mlp.weight', 
+                            'head_softmax.batch_norm.bias',
+                            'head_center.mlp.weight',
+                            'head_center.batch_norm.bias']
+            for name, value in net.named_parameters():
+                if name in freezed_layers:
+                    value.requires_grad = False
 
-        if (chkp_path is not None):
-            if load_encoder_weights: 
-                pretrained_dgcnn = torch.load(chkp_path, map_location=self.device)
-                # Rename the pretrained model for loading
-                renamed_parameters = {}
-                for key, value in pretrained_dgcnn.items():
-                    not_loading = ['conv1', 'conv8', 'bn1', 'bn8', 'conv9']
-                    if not any(layer in key for layer in not_loading):
-                        renamed_parameters[key[7:]] = value
-                net.load_state_dict(renamed_parameters, strict=False)
-                print('dgcnn pretrained weights loaded.')
-
-        if load_heads:
+        else:
             chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
             checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
             net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
@@ -106,6 +102,12 @@ class ModelTrainervnDGCNN:
             # print(checkpoint_heads['model_state_dict']['head_var.mlp.weight'][:5,0])
             # print(net.head_var.mlp.weight[:5,0])
         
+        if config.lr_scheduler == True:
+            # milestones = [200, 400, 600]
+            # self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
+            # self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=2e-7, end_factor=1, total_iters=config.max_epoch, last_epoch=- 1, verbose=True)
+            self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=config.max_epoch, eta_min=0, last_epoch=-1, verbose=True)
+
         net.to(self.device)   
 
          # Path of the result folder

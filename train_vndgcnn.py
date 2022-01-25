@@ -42,14 +42,15 @@ if __name__ == '__main__':
 
     config = Config()
     config.on_gpu = True
-    config.max_epoch = 1000
+    config.max_epoch = 3000
     config.checkpoint_gap = 100
     config.val_pls = False
     config.learning_rate = 0.1   
     config.lr_scheduler = True      
-    config.saving_path = './results/vndgcnn/Expriments0125_40/'+'I'
+    config.saving_path = './results/vndgcnn/Expriments0125_80/'+'I_cos'
+    chkp_path = './results/vndgcnn/Expriments0125_80/old_checkpoints/checkpoints/chkp_0200.tar'
     
-    trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
+    trainer = ModelTrainervnDGCNN(net, config, chkp_path=chkp_path, resume_training=True, finetune=False, on_gpu=config.on_gpu)
     trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
     
     # # Learning rate search
