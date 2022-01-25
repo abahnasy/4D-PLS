@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
+# from  torch.distributions import multivariate_normal
 
 from utils.debugging import d_print
 try:
@@ -54,10 +55,21 @@ def new_pdf_normal(x, mean, var):
     d = torch.pow(dif, 2)
     e = torch.matmul(d, inv_var)
     probs = torch.exp(e * -0.5)
-    probs = torch.sum(probs, 1) / torch.sum(var_eps)
-
-
+    probs = torch.sum(probs, 1) / torch.sum(var_eps)        # TSY: torch.sum(var_eps)?
+    # d_print(torch.sum(var_eps))
+    # d_print(probs.max())
+    # d_print(probs.min())
     return probs
+
+
+# def new_new_pdf_normal(x, mean, var):
+#     eps = torch.ones_like(var, requires_grad=True, device=x.device) * 1e-5
+#     var_eps = var + eps
+#     dist = multivariate_normal.MultivariateNormal(loc=mean, covariance_matrix=torch.diag(var_eps))
+#     probs = torch.exp(dist.log_prob(x))
+#     d_print(probs.max())
+#     d_print(probs.min())
+#     return probs
 
 def instance_half_loss(embeddings, ins_labels):
     """
@@ -139,11 +151,14 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
             mean = embeddings[idx]  # 1xD
             var = variances[idx]
             probs = new_pdf_normal(embeddings, mean, var)
-
-            labels = (ins_labels == instance) * 1.0             # shape[B*N] if the point belongs to the instance
-            # d_print(torch.sum(ins_labels == 0))
-            ratio = torch.sum(ins_labels == 0)/(torch.sum(ins_labels == instance)*1.0+ torch.sum(probs > 0.5))
-            weights = ((ins_labels == instance) | (probs >0.5)) * ratio + (ins_labels >= 0) * 1 #new loss
+            # d_print(probs.max())
+            # d_print(probs.min())
+            labels = (ins_labels == instance) * 1.0             # ground truth: shape[B*N] whether the point belongs to the instance
+            ratio = torch.sum(ins_labels == 0)/(torch.sum(ins_labels == instance)*1.0+ torch.sum(probs > 0.5))  # non instance points / number of points predicted to be this instance
+            # d_print(ratio)
+            # TSY: ratio gives instances with less points a larger weight
+            # TSY: weights: points belonging to this instance = (1+ratio), other points = 1
+            weights = ((ins_labels == instance) | (probs >0.5)) * ratio + (ins_labels >= 0) * 1 #new loss 
             loss = loss + weighted_mse_loss(probs, labels, weights)
 
     return loss

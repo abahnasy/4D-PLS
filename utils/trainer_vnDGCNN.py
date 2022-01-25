@@ -64,7 +64,12 @@ class ModelTrainervnDGCNN:
         ##########################
         if resume_training==True:
             pretrained_model = torch.load(chkp_path, map_location=self.device)
-            self.optimizer.load_state_dict(pretrained_model['optimizer_state_dict']) 
+            # self.optimizer.load_state_dict(pretrained_model['optimizer_state_dict']) 
+            # if 'cuda' in self.device.type:
+            #     for state in self.optimizer.state.values():
+            #         for k, v in state.items():
+            #             if torch.is_tensor(v):
+            #                 state[k] = v.cuda()
             net.load_state_dict(pretrained_model['model_state_dict'], strict=True)
             freezed_layers = ['head_mlp.mlp.weight', 
                             'head_mlp.batch_norm.bias',
@@ -204,10 +209,10 @@ class ModelTrainervnDGCNN:
                     self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
                     self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
                     self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
+                    # self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
                     self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
+                    self.train_logger.add_scalar('Loss/variance_loss', net.variance_loss.item(), self.global_step)
+                    # self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
                 self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 
                 # print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
@@ -259,11 +264,11 @@ class ModelTrainervnDGCNN:
             train_iou_mean = train_iou_mean/len(train_loader)
             self.train_logger.add_scalar('report/acc', train_acc_mean*100, epoch)
             self.train_logger.add_scalar('report/mean_ious', train_iou_mean*100, epoch)
+            self.train_logger.add_scalar('report/mean_total_loss', total_loss_mean, epoch)
             
             # update lr_scheduler every epoch
             if config.lr_scheduler == True:        
                 self.lr_scheduler.step()
-                self.train_logger.add_scalar('report/mean_total_loss', total_loss_mean, epoch)
             
             # save the best model
             if train_acc_mean > best_train_acc:
@@ -438,9 +443,9 @@ class ModelTrainervnDGCNN:
                 # Backward + optimize
                 loss.backward()
 
-                # if config.grad_clip_norm > 0:
-                #     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
-                #     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
+                if config.grad_clip_norm > 0:
+                    # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
+                    torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
                 if config.lr_scheduler == True:        
                     self.lr_scheduler.step()

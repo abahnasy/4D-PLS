@@ -35,7 +35,7 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=1, shuffle=False, pin_memory=True)
 
-    net=vnDGCNN(train_set.label_values, train_set.ignored_labels, input_feature_dims=3)
+    net=vnDGCNN(train_set.label_values, train_set.ignored_labels)
     # net = VNDGCNN(train_set.label_values,train_set.ignored_labels)
     num_parameters = get_model_parameters(net)
     print('Number of model parameters:', num_parameters)
