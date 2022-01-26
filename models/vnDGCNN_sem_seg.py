@@ -214,7 +214,6 @@ class vnDGCNN(nn.Module):
         lbl_values,
         ign_lbls,
         pretrained=False,
-        input_feature_dims=3, # number of input feature deminsions
         first_features_dim=256, # output dimension
         free_dim=4,
         k=20, # number of KNN neighbors

@@ -30,12 +30,12 @@ if __name__ == '__main__':
     DATASET_PATH = './data'
 
  
-    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=40, augmentation='aligned',verbose=False)
+    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=80, augmentation='aligned',verbose=False)
     val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=16, augmentation='z',verbose=False)
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
 
-    net=vnDGCNN(train_set.label_values, train_set.ignored_labels, input_feature_dims=3)
+    net=vnDGCNN(train_set.label_values, train_set.ignored_labels)
     # net = VNDGCNN(train_set.label_values,train_set.ignored_labels)
     num_parameters = get_model_parameters(net)
     print('Number of model parameters:', num_parameters)
@@ -46,11 +46,15 @@ if __name__ == '__main__':
     config.checkpoint_gap = 100
     config.val_pls = False
     config.learning_rate = 0.1   
-    config.lr_scheduler = True      
-    config.saving_path = './results/vndgcnn/Expriments0125_80/'+'I_cos'
-    chkp_path = './results/vndgcnn/Expriments0125_80/old_checkpoints/checkpoints/chkp_0200.tar'
+    config.lr_scheduler = False      
+    config.saving_path = './results/vndgcnn/Experiments0126_debug/'+'I'+'_grad_clip'
+    # chkp_path = './results/vndgcnn/Experiments0125_80/old_checkpoints/checkpoints/chkp_0200.tar'
+    # chkp_path = './results/vndgcnn/Experiments0125_80/I_cos/checkpoints/best_chkp.tar'
+    chkp_path = None
+    config.resume_training = False
+    config.grad_clip_norm = -100.0
     
-    trainer = ModelTrainervnDGCNN(net, config, chkp_path=chkp_path, resume_training=True, finetune=False, on_gpu=config.on_gpu)
+    trainer = ModelTrainervnDGCNN(net, config, chkp_path=chkp_path, resume_training=config.resume_training, on_gpu=config.on_gpu)
     trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
     
     # # Learning rate search
@@ -58,6 +62,6 @@ if __name__ == '__main__':
     #     config.learning_rate = lr   
     #     config.saving_path = './results/vndgcnn/Expriments0124-'+'lr_search-16/'+str(config.learning_rate)
         
-    #     trainer = ModelTrainervnDGCNN(net, config, finetune=True, on_gpu=config.on_gpu)
+    #     trainer = ModelTrainervnDGCNN(net, config, chkp_path=None, resume_training=None, on_gpu=config.on_gpu)
     #     trainer.train_overfit_4D(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
 
