@@ -64,12 +64,12 @@ class ModelTrainervnDGCNN:
         ##########################
         if resume_training==True:
             pretrained_model = torch.load(chkp_path, map_location=self.device)
-            # self.optimizer.load_state_dict(pretrained_model['optimizer_state_dict']) 
-            # if 'cuda' in self.device.type:
-            #     for state in self.optimizer.state.values():
-            #         for k, v in state.items():
-            #             if torch.is_tensor(v):
-            #                 state[k] = v.cuda()
+            self.optimizer.load_state_dict(pretrained_model['optimizer_state_dict']) 
+            if 'cuda' in self.device.type:
+                for state in self.optimizer.state.values():
+                    for k, v in state.items():
+                        if torch.is_tensor(v):
+                            state[k] = v.cuda()
             net.load_state_dict(pretrained_model['model_state_dict'], strict=True)
             freezed_layers = ['head_mlp.mlp.weight', 
                             'head_mlp.batch_norm.bias',
@@ -100,12 +100,6 @@ class ModelTrainervnDGCNN:
                 if name in freezed_layers:
                     value.requires_grad = False
 
-            # print(pretrained_dgcnn['module.conv5.0.weight'][:5,0,0])
-            # print(net.conv5[0].weight[:5,0,0])         
-            # print(pretrained_dgcnn['module.conv1.0.weight'][:5,0,0])
-            # print(net.conv1[0].weight[:5,0,0])         
-            # print(checkpoint_heads['model_state_dict']['head_var.mlp.weight'][:5,0])
-            # print(net.head_var.mlp.weight[:5,0])
         
         if config.lr_scheduler == True:
             # milestones = [200, 400, 600]
@@ -156,6 +150,7 @@ class ModelTrainervnDGCNN:
             total_loss_mean =0.
             train_acc_mean = 0.
             train_iou_mean = 0.
+
             for batch in train_loader:
                 # move to device (GPU)
                 sample_gpu ={}
@@ -188,9 +183,9 @@ class ModelTrainervnDGCNN:
                 train_iou_mean += meanIOU
                 total_loss_mean += loss.item()
                 loss.backward()
-                # if config.grad_clip_norm > 0:
-                #     # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
-                #     torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
+                if config.grad_clip_norm > 0:
+                    # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
+                    torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
                 self.optimizer.step()
                 
                 if 'cuda' in self.device.type:
@@ -329,10 +324,10 @@ class ModelTrainervnDGCNN:
                             self.val_logger.add_scalar('Loss/total', loss.item(), val_step)
                             self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), val_step)
                             self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), val_step)
-                            self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), val_step)
+                            # self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), val_step)
                             self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), val_step)
-                            self.val_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), val_step)
-                            self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), val_step)               
+                            self.val_logger.add_scalar('Loss/variance_loss', net.variance_loss.item(), val_step)
+                            # self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), val_step)               
                         self.val_logger.add_scalar('acc/train', acc*100, val_step)
                         
                         print('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))

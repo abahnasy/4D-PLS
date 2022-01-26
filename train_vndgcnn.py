@@ -47,7 +47,7 @@ if __name__ == '__main__':
     config.val_pls = False
     config.learning_rate = 0.1   
     config.lr_scheduler = False      
-    config.saving_path = './results/vndgcnn/Experiments0125_debug/'+'I'+'_grad_clip'
+    config.saving_path = './results/vndgcnn/Experiments0126_debug/'+'I'+'_grad_clip'
     # chkp_path = './results/vndgcnn/Experiments0125_80/old_checkpoints/checkpoints/chkp_0200.tar'
     # chkp_path = './results/vndgcnn/Experiments0125_80/I_cos/checkpoints/best_chkp.tar'
     chkp_path = None
