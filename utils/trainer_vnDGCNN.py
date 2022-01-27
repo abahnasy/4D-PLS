@@ -106,7 +106,8 @@ class ModelTrainervnDGCNN:
             # self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=milestones, gamma=0.45, verbose=False)
             # self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer, start_factor=2e-7, end_factor=1, total_iters=config.max_epoch, last_epoch=- 1, verbose=True)
             self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=config.max_epoch, eta_min=0, last_epoch=-1, verbose=True)
-
+            # if resume_training == True:
+            #     self.lr_scheduler.load_state_dict(pretrained_model['scheduler'])
         net.to(self.device)   
 
          # Path of the result folder
@@ -125,7 +126,7 @@ class ModelTrainervnDGCNN:
     
 
 
-    def train_overfit_4D(self, config, net=None, train_loader=None, val_loader=None, loss_type='4DPLSloss'):
+    def train(self, config, net=None, train_loader=None, val_loader=None, loss_type='4DPLSloss'):
         ################
         # Initialization
         ################
@@ -207,17 +208,17 @@ class ModelTrainervnDGCNN:
                     # self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
                     self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
                     self.train_logger.add_scalar('Loss/variance_loss', net.variance_loss.item(), self.global_step)
-                    # self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)               
+                    # self.train_logger.add_scalar('Loss/variance_l2_loss', net.variance_l2.item(), self.global_step)               
                 self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 
                 # print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
-                message = 'e{:03d}-i{:04d} => L={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} L_VL2={:.3f} meanIOU={:3.0f}% acc={:3.0f}%\n'
+                message = 'e{:03d}-i{:04d} => L={:.3f} L_CE={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} meanIOU={:3.0f}% acc={:3.0f}%\n'
                 print(message.format(epoch, self.step,
                                         loss.item(),
+                                        net.output_loss.item(),
                                         net.center_loss.item(),
                                         net.instance_loss.item(),
                                         net.variance_loss.item(),
-                                        net.variance_l2.item(),
                                         100 * meanIOU, 
                                         100 * acc,))
 
@@ -226,10 +227,10 @@ class ModelTrainervnDGCNN:
                     with open(join(config.saving_path, 'training.txt'), "a") as file:
                         file.write(message.format(epoch, self.step,
                                         loss.item(),
+                                        net.output_loss.item(),
                                         net.center_loss.item(),
                                         net.instance_loss.item(),
                                         net.variance_loss.item(),
-                                        net.variance_l2.item(),
                                         100 * meanIOU,
                                         100 * acc,))
                 
@@ -243,6 +244,8 @@ class ModelTrainervnDGCNN:
                                 'model_state_dict': net.state_dict(),
                                 'optimizer_state_dict': self.optimizer.state_dict(),
                                 'saving_path': config.saving_path}
+                    if config.lr_scheduler == True:
+                        save_dict.update({'lr_scheduler': self.lr_scheduler.state_dict()})
 
                     # Save current state of the network (for restoring purposes)
                     checkpoint_path = join(checkpoint_directory, 'current_chkp.tar')
@@ -271,121 +274,18 @@ class ModelTrainervnDGCNN:
                 checkpoint_path = join(checkpoint_directory, 'best_chkp.tar')
                 torch.save(save_dict, checkpoint_path)
 
-
-
+            # validation process
             if config.val_pls == True and epoch%5 == 0:
-                print('Validation process...')
-                with torch.no_grad():
-                    val_acc_mean = 0.
-                    val_iou_mean = 0.
-                    val_step = self.global_step
-                    for batch in val_loader:
-                        # move to device (GPU)
-                        sample_gpu ={}
-                        if 'cuda' in self.device.type:
-                            for k, v in batch.items():
-                                sample_gpu[k] = v.to(self.device)
-                        else:
-                            sample_gpu = batch
-            
-
-                        centers = sample_gpu['in_fts'][:,:,4:8]
-                        times = sample_gpu['in_fts'][:,:,8]
-
-                        outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:3])
-                        if loss_type == 'CEloss': 
-                            labels = sample_gpu['in_lbls'].type(torch.LongTensor)
-                            loss = net.cross_entropy_loss(outputs, labels)
-                        if loss_type == '4DPLSloss':
-                            loss = net.loss(
-                                outputs, centers_output, var_output, embedding, 
-                                sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
-
-                        acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                        ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())               
-                        nan_idx = torch.isnan(ious)
-                        ious[nan_idx] = 0.
-                        val_acc_mean+=acc
-                        meanIOU = ious.sum()/torch.count_nonzero(ious)
-                        val_iou_mean += meanIOU
-                        if 'cuda' in self.device.type:
-                            torch.cuda.synchronize(self.device)
-
-                        for i, iou in enumerate(ious):
-                            if isnan(iou):
-                                iou = 0.
-                            self.val_logger.add_scalar('ious/{}'.format(i), iou, val_step)    
-                        # log mean IoU
-                        self.val_logger.add_scalar('ious/meanIoU', meanIOU, val_step)    
-                        #AB: log into tensorbaord
-                        if loss_type == 'CEloss': # TODO: debug
-                            self.val_logger.add_scalar('Loss/cross_entropy_loss', loss.item(), val_step)
-                        if loss_type == '4DPLSloss':
-                            self.val_logger.add_scalar('Loss/total', loss.item(), val_step)
-                            self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), val_step)
-                            self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), val_step)
-                            # self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), val_step)
-                            self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), val_step)
-                            self.val_logger.add_scalar('Loss/variance_loss', net.variance_loss.item(), val_step)
-                            # self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), val_step)               
-                        self.val_logger.add_scalar('acc/train', acc*100, val_step)
-                        
-                        print('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
-
-                        # Log file
-                        if config.saving:
-                            with open(join(config.saving_path, 'training.txt'), "a") as file:
-                                file.write('Validation: Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}\n'.format(epoch, loss.item(), meanIOU, acc*100))
-
-                        val_step += 1
-                
-                val_acc_mean = val_acc_mean/len(val_loader)
-                val_iou_mean = val_iou_mean/len(val_loader)
-                self.val_logger.add_scalar('report/acc', val_acc_mean*100, epoch)
-                self.val_logger.add_scalar('report/mean_ious', val_iou_mean*100, epoch)
-                if config.saving:
-                    with open(join(config.saving_path, 'training.txt'), "a") as file:
-                        file.write('Training_acc:{0:.3f}, Validation_acc:{1:.3f}\n'.format(train_acc_mean*100,val_acc_mean*100))
+                self.val_sem_seg(config, net, val_loader, epoch, loss_type)
                     
-            
 
-
-    def train(self, net, training_loader, val_loader, config):
-        """
-        Train the model on a particular dataset.
-        """
-        ################
-        # Initialization
-        ################
-
-        if config.saving:
-            # Training log file
-            with open(join(config.saving_path, 'training.txt'), "w") as file:
-                file.write('epochs steps out_loss offset_loss train_accuracy time\n')
-
-            # Checkpoints directory
-            checkpoint_directory = join(config.saving_path, 'checkpoints')
-            if not exists(checkpoint_directory):
-                makedirs(checkpoint_directory)
-        else:
-            checkpoint_directory = None
-            # PID_file = None
-
-        # Loop variables
-        t0 = time.time()
-        t = [time.time()]
-        last_display = time.time()
-        mean_dt = np.zeros(1)
-
-        # Start training loop
-        for epoch in range(config.max_epoch):
-            net.train()
-            self.step = 0
-            for batch in training_loader:          
-                # New time
-                t = t[-1:]
-                t += [time.time()]
-
+    def val_sem_seg(self, config, net, val_loader, epoch, loss_type):
+        print('Semantic segmentation validation process... ')
+        with torch.no_grad():
+            val_acc_mean = 0.
+            val_iou_mean = 0.
+            val_step = self.global_step
+            for batch in val_loader:
                 # move to device (GPU)
                 sample_gpu ={}
                 if 'cuda' in self.device.type:
@@ -393,116 +293,82 @@ class ModelTrainervnDGCNN:
                         sample_gpu[k] = v.to(self.device)
                 else:
                     sample_gpu = batch
-                # zero the parameter gradients
-                self.optimizer.zero_grad()
 
-                # extract data used in loss functions 
-                # split centers and times -> original feats composition [x,y,z,r,c1,c2,c3,objectness,time]
                 centers = sample_gpu['in_fts'][:,:,4:8]
                 times = sample_gpu['in_fts'][:,:,8]
-                # Forward pass
-                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:4])
-                # getting loss 
-                loss = net.loss(
-                    outputs, centers_output, var_output, embedding, 
-                    sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)
-                # getting accuracy
+
+                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'][:,:,:3])
+                if loss_type == 'CEloss': 
+                    labels = sample_gpu['in_lbls'].type(torch.LongTensor)
+                    loss = net.cross_entropy_loss(outputs, labels)
+                if loss_type == '4DPLSloss':
+                    loss = net.loss(
+                        outputs, centers_output, var_output, embedding, 
+                        sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)                
+
                 acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                # getting mean iou and ious for each class
-                ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
+                ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())               
                 nan_idx = torch.isnan(ious)
                 ious[nan_idx] = 0.
+                val_acc_mean+=acc
+                meanIOU = ious.sum()/torch.count_nonzero(ious)
+                val_iou_mean += meanIOU
+                
+                if 'cuda' in self.device.type:
+                    torch.cuda.synchronize(self.device)
 
                 for i, iou in enumerate(ious):
                     if isnan(iou):
                         iou = 0.
-                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
+                    self.val_logger.add_scalar('ious/{}'.format(i), iou, val_step)    
                 # log mean IoU
-                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
+                self.val_logger.add_scalar('ious/meanIoU', meanIOU, val_step)    
                 #AB: log into tensorbaord
-                self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
+                if loss_type == 'CEloss': 
+                    self.val_logger.add_scalar('Loss/cross_entropy_loss', loss.item(), val_step)
+                if loss_type == '4DPLSloss':
+                    self.val_logger.add_scalar('Loss/total', loss.item(), val_step)
+                    self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), val_step)
+                    self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), val_step)
+                    # self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), val_step)
+                    self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), val_step)
+                    self.val_logger.add_scalar('Loss/variance_loss', net.variance_loss.item(), val_step)
+                    # self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), val_step)               
+                self.val_logger.add_scalar('acc/train', acc*100, val_step)
                 
-                self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
-                self.global_step += 1
-
-                #print('Step:{0:4d}, total_loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.global_step, loss.item(), ious.mean(), acc*100))
-                
-                t += [time.time()]
-
-                # Backward + optimize
-                loss.backward()
-
-                if config.grad_clip_norm > 0:
-                    # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
-                    torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
-                self.optimizer.step()
-                if config.lr_scheduler == True:        
-                    self.lr_scheduler.step()
-
-                if 'cuda' in self.device.type:
-                    torch.cuda.synchronize(self.device)
-
-                t += [time.time()]
-
-                # Average timing
-                if self.step < 2:
-                    mean_dt = np.array(t[1:]) - np.array(t[:-1])
-                else:
-                    mean_dt = 0.9 * mean_dt + 0.1 * (np.array(t[1:]) - np.array(t[:-1]))
-
-                # Console display (only one per second)
-                if (t[-1] - last_display) > 1.0:
-                    last_display = t[-1]
-                    message = 'e{:03d}-i{:04d} => L={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} L_VL2={:.3f} acc={:3.0f}% / t(ms): {:5.1f} {:5.1f} {:5.1f})'
-                    print(message.format(self.epoch, self.step,
-                                         loss.item(),
-                                         net.center_loss.item(),
-                                         net.instance_loss.item(),
-                                         net.variance_loss.item(),
-                                         net.variance_l2.item(),
-                                         100 * acc,
-                                         1000 * mean_dt[0],
-                                         1000 * mean_dt[1],
-                                         1000 * mean_dt[2]))
+                message = 'e{:03d}-i{:04d} => L={:.3f} L_CE={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} meanIOU={:3.0f}% acc={:3.0f}%\n'
+                print(message.format(epoch, val_step-self.global_step,
+                                        loss.item(),
+                                        net.output_loss.item(),
+                                        net.center_loss.item(),
+                                        net.instance_loss.item(),
+                                        net.variance_loss.item(),
+                                        100 * meanIOU, 
+                                        100 * acc,))
 
                 # Log file
                 if config.saving:
                     with open(join(config.saving_path, 'training.txt'), "a") as file:
-                        message = '{:d} {:d} {:.3f} {:.3f} {:.3f} {:.3f}\n'
-                        file.write(message.format(self.epoch,
-                                                  self.step,
-                                                  net.output_loss,
-                                                  net.reg_loss,
-                                                  acc,
-                                                  t[-1] - t0))
+                        file.write(message.format(epoch, val_step-self.global_step,
+                                        loss.item(),
+                                        net.output_loss.item(),
+                                        net.center_loss.item(),
+                                        net.instance_loss.item(),
+                                        net.variance_loss.item(),
+                                        100 * meanIOU,
+                                        100 * acc,))
 
-                self.step += 1
-                
-            # Update epoch
-            self.epoch += 1
+                val_step += 1
+        
+        val_acc_mean = val_acc_mean/len(val_loader)
+        val_iou_mean = val_iou_mean/len(val_loader)
+        self.val_logger.add_scalar('report/acc', val_acc_mean*100, epoch)
+        self.val_logger.add_scalar('report/mean_ious', val_iou_mean*100, epoch)
+        if config.saving:
+            with open(join(config.saving_path, 'training.txt'), "a") as file:
+                file.write('Validation_acc:{0:.3f}, Validation_meanIOU:{1:.3f}\n'.format(val_acc_mean*100, val_iou_mean*100))
 
-            # Saving
-            if config.saving:
-                # Get current state dict
-                save_dict = {'epoch': self.epoch,
-                             'model_state_dict': net.state_dict(),
-                             'optimizer_state_dict': self.optimizer.state_dict(),
-                             'saving_path': config.saving_path}
 
-                # Save current state of the network (for restoring purposes)
-                checkpoint_path = join(checkpoint_directory, 'current_chkp.tar')
-                torch.save(save_dict, checkpoint_path)
-
-                # Save checkpoints occasionally
-                if (self.epoch + 1) % config.checkpoint_gap == 0:
-                    checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
-                    torch.save(save_dict, checkpoint_path)
 
 
 def evaluate_rotated(net, chkp_dir, config):
