@@ -54,9 +54,13 @@ def new_pdf_normal(x, mean, var):
     dif = x - mean_rep
     d = torch.pow(dif, 2)
     e = torch.matmul(d, inv_var)
-    probs = torch.exp(e * -0.5)
-    probs = torch.sum(probs, 1) / torch.sum(var_eps)        # TSY: torch.sum(var_eps)?
-    # d_print(torch.sum(var_eps))
+    # probs = torch.exp(e * -0.5)
+    # probs = torch.sum(probs, 1) / torch.sum(var_eps) 
+    
+    e = torch.sum(e, 1)
+    probs =  torch.exp(e * -0.5) #/ torch.sum(var_eps)
+    # d_print(torch.unique(e))
+    # d_print(torch.unique(probs))
     # d_print(probs.max())
     # d_print(probs.min())
     return probs
