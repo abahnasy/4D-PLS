@@ -64,6 +64,8 @@ class ModelTrainervnDGCNN:
         ##########################
         if resume_training==True:
             pretrained_model = torch.load(chkp_path, map_location=self.device)
+            self.epoch = pretrained_model['epoch']
+            print('Resume training from epoch:', self.epoch)
             self.optimizer.load_state_dict(pretrained_model['optimizer_state_dict']) 
             if 'cuda' in self.device.type:
                 for state in self.optimizer.state.values():
@@ -71,34 +73,34 @@ class ModelTrainervnDGCNN:
                         if torch.is_tensor(v):
                             state[k] = v.cuda()
             net.load_state_dict(pretrained_model['model_state_dict'], strict=True)
-            freezed_layers = ['head_mlp.mlp.weight', 
-                            'head_mlp.batch_norm.bias',
-                            'head_var.mlp.weight',
-                            'head_var.batch_norm.bias',
-                            'head_softmax.mlp.weight', 
-                            'head_softmax.batch_norm.bias',
-                            'head_center.mlp.weight',
-                            'head_center.batch_norm.bias']
-            for name, value in net.named_parameters():
-                if name in freezed_layers:
-                    value.requires_grad = False
+            # freezed_layers = ['head_mlp.mlp.weight', 
+            #                 'head_mlp.batch_norm.bias',
+            #                 'head_var.mlp.weight',
+            #                 'head_var.batch_norm.bias',
+            #                 'head_softmax.mlp.weight', 
+            #                 'head_softmax.batch_norm.bias',
+            #                 'head_center.mlp.weight',
+            #                 'head_center.batch_norm.bias']
+            # for name, value in net.named_parameters():
+            #     if name in freezed_layers:
+            #         value.requires_grad = False
 
         else:
             chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
             checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
             net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
             print('kpconv decoder heads pretrained weights loaded.')
-            freezed_layers = ['head_mlp.mlp.weight', 
-                            'head_mlp.batch_norm.bias',
-                            'head_var.mlp.weight',
-                            'head_var.batch_norm.bias',
-                            'head_softmax.mlp.weight', 
-                            'head_softmax.batch_norm.bias',
-                            'head_center.mlp.weight',
-                            'head_center.batch_norm.bias']
-            for name, value in net.named_parameters():
-                if name in freezed_layers:
-                    value.requires_grad = False
+            # freezed_layers = ['head_mlp.mlp.weight', 
+            #                 'head_mlp.batch_norm.bias',
+            #                 'head_var.mlp.weight',
+            #                 'head_var.batch_norm.bias',
+            #                 'head_softmax.mlp.weight', 
+            #                 'head_softmax.batch_norm.bias',
+            #                 'head_center.mlp.weight',
+            #                 'head_center.batch_norm.bias']
+            # for name, value in net.named_parameters():
+            #     if name in freezed_layers:
+            #         value.requires_grad = False
 
         
         if config.lr_scheduler == True:
@@ -134,7 +136,10 @@ class ModelTrainervnDGCNN:
         if config.saving:
             # Training log file
             with open(join(config.saving_path, 'training.txt'), "w") as file:
-                file.write('epochs steps out_loss offset_loss train_accuracy time\n')
+                if config.resume_training:
+                    file.write('Resume training from epoch:{0:4d}\n'.format(self.epoch))
+                else:
+                    file.write('Start training... \n')
             # Checkpoints directory
             checkpoint_directory = join(config.saving_path, 'checkpoints')
             if not exists(checkpoint_directory):
@@ -144,7 +149,9 @@ class ModelTrainervnDGCNN:
 
         net.to(self.device)
         best_train_acc = 0.
-        for epoch in range(config.max_epoch):
+        if config.resume_training:
+            self.global_step = (self.epoch+1)*len(train_loader)
+        while self.epoch < config.max_epoch: 
             net.train()
             # Training loop
             self.step = 0
@@ -211,9 +218,9 @@ class ModelTrainervnDGCNN:
                     # self.train_logger.add_scalar('Loss/variance_l2_loss', net.variance_l2.item(), self.global_step)               
                 self.train_logger.add_scalar('acc/train', acc*100, self.global_step)
                 
-                # print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(epoch, loss.item(), meanIOU, acc*100))
-                message = 'e{:03d}-i{:04d} => L={:.3f} L_CE={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} meanIOU={:3.0f}% acc={:3.0f}%\n'
-                print(message.format(epoch, self.step,
+                # print('Epoch:{0:4d}, loss:{1:2.3f}, iou_mean:{2:2.3f}, accuracy:{3:.3f}'.format(self.epoch, loss.item(), meanIOU, acc*100))
+                message = 'e{:04d}-i{:04d} => L={:.3f} L_CE={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} meanIOU={:3.0f}% acc={:3.0f}%\n'
+                print(message.format(self.epoch, self.step,
                                         loss.item(),
                                         net.output_loss.item(),
                                         net.center_loss.item(),
@@ -225,7 +232,7 @@ class ModelTrainervnDGCNN:
                 # Log file
                 if config.saving:
                     with open(join(config.saving_path, 'training.txt'), "a") as file:
-                        file.write(message.format(epoch, self.step,
+                        file.write(message.format(self.epoch, self.step,
                                         loss.item(),
                                         net.output_loss.item(),
                                         net.center_loss.item(),
@@ -233,14 +240,14 @@ class ModelTrainervnDGCNN:
                                         net.variance_loss.item(),
                                         100 * meanIOU,
                                         100 * acc,))
-                
+
                 self.step +=1
                 self.global_step += 1
 
                 # Saving
                 if config.saving:
                     # Get current state dict
-                    save_dict = {'epoch': epoch,
+                    save_dict = {'epoch': self.epoch,
                                 'model_state_dict': net.state_dict(),
                                 'optimizer_state_dict': self.optimizer.state_dict(),
                                 'saving_path': config.saving_path}
@@ -252,18 +259,21 @@ class ModelTrainervnDGCNN:
                     torch.save(save_dict, checkpoint_path)
                     
                     # Save checkpoints occasionally
-                    if (epoch + 1) % config.checkpoint_gap == 0:
-                        checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(epoch + 1))
+                    if (self.epoch + 1) % config.checkpoint_gap == 0:
+                        checkpoint_path = join(checkpoint_directory, 'chkp_{:04d}.tar'.format(self.epoch + 1))
                         torch.save(save_dict, checkpoint_path)
             
             # log mean acc and mean iou for an epoch
             total_loss_mean = total_loss_mean/len(train_loader)
             train_acc_mean = train_acc_mean/len(train_loader)
             train_iou_mean = train_iou_mean/len(train_loader)
-            self.train_logger.add_scalar('report/acc', train_acc_mean*100, epoch)
-            self.train_logger.add_scalar('report/mean_ious', train_iou_mean*100, epoch)
-            self.train_logger.add_scalar('report/mean_total_loss', total_loss_mean, epoch)
-            
+            self.train_logger.add_scalar('report/acc', train_acc_mean*100, self.epoch)
+            self.train_logger.add_scalar('report/mean_ious', train_iou_mean*100, self.epoch)
+            self.train_logger.add_scalar('report/mean_total_loss', total_loss_mean, self.epoch)
+            if config.saving:
+                with open(join(config.saving_path, 'training.txt'), "a") as file:
+                    file.write('Epoch:{0:4d}, Training_acc:{1:.3f}, Training_meanIOU:{2:.3f}\n'.format(self.epoch, train_acc_mean*100, train_iou_mean*100))
+
             # update lr_scheduler every epoch
             if config.lr_scheduler == True:        
                 self.lr_scheduler.step()
@@ -275,8 +285,10 @@ class ModelTrainervnDGCNN:
                 torch.save(save_dict, checkpoint_path)
 
             # validation process
-            if config.val_pls == True and epoch%5 == 0:
-                self.val_sem_seg(config, net, val_loader, epoch, loss_type)
+            if config.val_pls == True and self.epoch%5 == 0:
+                self.val_sem_seg(config, net, val_loader, self.epoch, loss_type)
+            
+            self.epoch += 1
                     
 
     def val_sem_seg(self, config, net, val_loader, epoch, loss_type):
@@ -336,7 +348,7 @@ class ModelTrainervnDGCNN:
                     # self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), val_step)               
                 self.val_logger.add_scalar('acc/train', acc*100, val_step)
                 
-                message = 'e{:03d}-i{:04d} => L={:.3f} L_CE={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} meanIOU={:3.0f}% acc={:3.0f}%\n'
+                message = 'Validation: e{:04d}-i{:04d} => L={:.3f} L_CE={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} meanIOU={:3.0f}% acc={:3.0f}%\n'
                 print(message.format(epoch, val_step-self.global_step,
                                         loss.item(),
                                         net.output_loss.item(),
@@ -366,7 +378,7 @@ class ModelTrainervnDGCNN:
         self.val_logger.add_scalar('report/mean_ious', val_iou_mean*100, epoch)
         if config.saving:
             with open(join(config.saving_path, 'training.txt'), "a") as file:
-                file.write('Validation_acc:{0:.3f}, Validation_meanIOU:{1:.3f}\n'.format(val_acc_mean*100, val_iou_mean*100))
+                file.write('Epoch:{0:4d}, Validation_acc:{1:.3f}, Validation_meanIOU:{2:.3f}\n'.format(epoch, val_acc_mean*100, val_iou_mean*100))
 
 
 

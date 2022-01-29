@@ -30,8 +30,8 @@ if __name__ == '__main__':
     DATASET_PATH = './data'
 
  
-    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=4, augmentation='aligned',verbose=False)
-    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=4, augmentation='z',verbose=False)
+    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train',num_samples=250, augmentation='aligned',verbose=False)
+    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val',num_samples=20, augmentation='z',verbose=False)
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
 
@@ -42,17 +42,19 @@ if __name__ == '__main__':
 
     config = Config()
     config.on_gpu = True
-    config.max_epoch = 2000
     config.checkpoint_gap = 100
-    config.val_pls = True
-    config.learning_rate = 0.1   
-    config.lr_scheduler = False      
-    config.saving_path = './results/vndgcnn/Experiments0127/'+'I'+'_debug'
-    # chkp_path = './results/vndgcnn/Experiments0125_80/old_checkpoints/checkpoints/chkp_0200.tar'
-    # chkp_path = './results/vndgcnn/Experiments0125_80/I_cos/checkpoints/best_chkp.tar'
-    chkp_path = None
-    config.resume_training = False
     config.grad_clip_norm = -100.0
+    
+    config.val_pls = False
+    config.max_epoch = 200
+    config.learning_rate = 0.1 
+    config.lr_scheduler = False      
+    # config.saving_path = './results/vndgcnn/Experiments0127/'+'I/'+'lr_search/'+str(config.learning_rate)
+    config.saving_path = './results/vndgcnn/Experiments0127_gaussian/'+'I_250'+'_fixed_yes_no'
+    
+    config.resume_training = False
+    chkp_path = None
+    # chkp_path = './results/vndgcnn/Experiments0127_gaussian/I_250_fixed_no_no/checkpoints/current_chkp.tar'
     
     trainer = ModelTrainervnDGCNN(net, config, chkp_path=chkp_path, resume_training=config.resume_training, on_gpu=config.on_gpu)
     trainer.train(config, net, train_loader, val_loader, loss_type='4DPLSloss')#4DPLSloss, CEloss
