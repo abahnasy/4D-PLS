@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
-# from  torch.distributions import multivariate_normal
+from  torch.distributions import multivariate_normal
 
 from utils.debugging import d_print
 try:
@@ -38,6 +38,35 @@ def pdf_normal(x, mean, var):
 
     return p_e
 
+def old_pdf_normal(x, mean, var):
+    """
+    Computes instance belonging probability values
+    :param x: embeddings values of all points NxD
+    :param mean: instance embedding 1XD
+    :param var: instance variance value 1XD
+    :return: probability scores for all points Nx1
+    """
+    eps = torch.ones_like(var, requires_grad=True, device=x.device) * 1e-5
+    var_eps = var + eps
+    var_seq = var_eps.squeeze()
+    inv_var = torch.diag(1 / var_seq)
+    mean_rep = mean.repeat(x.shape[0], 1)
+    dif = x - mean_rep
+    d = torch.pow(dif, 2)
+    e = torch.matmul(d, inv_var)
+    probs = torch.exp(e * -0.5)
+    probs = torch.sum(probs, 1) / torch.sum(var_eps) 
+
+    # e = torch.sum(e, 1)
+    # probs =  torch.exp(e * -0.5) / torch.sum(var_eps)
+    
+    # unique_values, counts = torch.unique(probs, return_counts=True)
+    # d_print(unique_values)
+    # d_print(counts)
+
+    return probs
+
+
 def new_pdf_normal(x, mean, var):
     """
     Computes instance belonging probability values
@@ -54,26 +83,23 @@ def new_pdf_normal(x, mean, var):
     dif = x - mean_rep
     d = torch.pow(dif, 2)
     e = torch.matmul(d, inv_var)
-    # probs = torch.exp(e * -0.5)
-    # probs = torch.sum(probs, 1) / torch.sum(var_eps) 
-    
+
     e = torch.sum(e, 1)
-    probs =  torch.exp(e * -0.5) #/ torch.sum(var_eps)
-    # d_print(torch.unique(e))
-    # d_print(torch.unique(probs))
+    probs =  torch.exp(-0.5*e) #/ torch.sqrt(torch.tensor(np.power(2*np.pi, x.shape[1])) * torch.prod(var_eps)) 
+    
+    return probs
+
+
+
+def torch_pdf_normal(x, mean, var):
+    eps = torch.ones_like(var, requires_grad=True, device=x.device) * 1e-5
+    var_eps = var + eps
+    dist = multivariate_normal.MultivariateNormal(loc=mean, covariance_matrix=torch.diag(var_eps))
+    probs = torch.exp(dist.log_prob(x))
     # d_print(probs.max())
     # d_print(probs.min())
     return probs
 
-
-# def new_new_pdf_normal(x, mean, var):
-#     eps = torch.ones_like(var, requires_grad=True, device=x.device) * 1e-5
-#     var_eps = var + eps
-#     dist = multivariate_normal.MultivariateNormal(loc=mean, covariance_matrix=torch.diag(var_eps))
-#     probs = torch.exp(dist.log_prob(x))
-#     d_print(probs.max())
-#     d_print(probs.min())
-#     return probs
 
 def instance_half_loss(embeddings, ins_labels):
     """
@@ -102,6 +128,7 @@ def instance_half_loss(embeddings, ins_labels):
                 continue
             loss = loss + ins_half_loss
     return  loss
+
 
 def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None, times=None):
     """
@@ -149,20 +176,23 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
             else:
                 random_center = torch.randint(0, range, (1,))   # random integers generated between 0 and range, size=(1,)
             
-            # d_print(instances)
-            # d_print(ins_idxs[0].shape)
             idx = ins_idxs[0][indices[random_center]]           # the index of one of the points with highest objectness scores
             mean = embeddings[idx]  # 1xD
             var = variances[idx]
             probs = new_pdf_normal(embeddings, mean, var)
-            # d_print(probs.max())
-            # d_print(probs.min())
             labels = (ins_labels == instance) * 1.0             # ground truth: shape[B*N] whether the point belongs to the instance
             ratio = torch.sum(ins_labels == 0)/(torch.sum(ins_labels == instance)*1.0+ torch.sum(probs > 0.5))  # non instance points / number of points predicted to be this instance
-            # d_print(ratio)
             # TSY: ratio gives instances with less points a larger weight
-            # TSY: weights: points belonging to this instance = (1+ratio), other points = 1
+            # TSY: weights: points truly or predicted as belonging to this instance  = (1+ratio), other instance points = 1, non instance points = 0
             weights = ((ins_labels == instance) | (probs >0.5)) * ratio + (ins_labels >= 0) * 1 #new loss 
+            
+            # counts = torch.gt(probs, 0.5)
+            # d_print('probs > 0.5:{}'.format(counts.sum()))
+            # unique_values, counts = torch.unique(labels, return_counts=True)
+            # d_print('labels counts:')
+            # d_print(unique_values)
+            # d_print(counts)
+            
             loss = loss + weighted_mse_loss(probs, labels, weights)
 
     return loss

@@ -49,7 +49,7 @@ class SemanticKittiDataSet(Dataset):
         Returns: None
         """
         # Assertion section
-        assert balance_classes == False, 'invalid subsampling strategy'
+        # assert balance_classes == False, 'invalid subsampling strategy'
         # assert ((set == 'val') and (saving_path != None)) == True, 'provide the path of the prev predictions for validation'
         if verbose: d_print("Initializing {} dataset".format(set))
         super().__init__()

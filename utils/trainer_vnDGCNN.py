@@ -73,34 +73,34 @@ class ModelTrainervnDGCNN:
                         if torch.is_tensor(v):
                             state[k] = v.cuda()
             net.load_state_dict(pretrained_model['model_state_dict'], strict=True)
-            # freezed_layers = ['head_mlp.mlp.weight', 
-            #                 'head_mlp.batch_norm.bias',
-            #                 'head_var.mlp.weight',
-            #                 'head_var.batch_norm.bias',
-            #                 'head_softmax.mlp.weight', 
-            #                 'head_softmax.batch_norm.bias',
-            #                 'head_center.mlp.weight',
-            #                 'head_center.batch_norm.bias']
-            # for name, value in net.named_parameters():
-            #     if name in freezed_layers:
-            #         value.requires_grad = False
+            freezed_layers = ['head_mlp.mlp.weight', 
+                            'head_mlp.batch_norm.bias',
+                            'head_var.mlp.weight',
+                            'head_var.batch_norm.bias',
+                            'head_softmax.mlp.weight', 
+                            'head_softmax.batch_norm.bias',
+                            'head_center.mlp.weight',
+                            'head_center.batch_norm.bias']
+            for name, value in net.named_parameters():
+                if name in freezed_layers:
+                    value.requires_grad = False
 
         else:
             chkp_path_kpconv = './results/Log_2020-10-06_16-51-05/checkpoints/current_chkp.tar'
             checkpoint_heads = torch.load(chkp_path_kpconv, map_location=self.device)
             net.load_state_dict(checkpoint_heads['model_state_dict'], strict=False)
             print('kpconv decoder heads pretrained weights loaded.')
-            # freezed_layers = ['head_mlp.mlp.weight', 
-            #                 'head_mlp.batch_norm.bias',
-            #                 'head_var.mlp.weight',
-            #                 'head_var.batch_norm.bias',
-            #                 'head_softmax.mlp.weight', 
-            #                 'head_softmax.batch_norm.bias',
-            #                 'head_center.mlp.weight',
-            #                 'head_center.batch_norm.bias']
-            # for name, value in net.named_parameters():
-            #     if name in freezed_layers:
-            #         value.requires_grad = False
+            freezed_layers = ['head_mlp.mlp.weight', 
+                            'head_mlp.batch_norm.bias',
+                            'head_var.mlp.weight',
+                            'head_var.batch_norm.bias',
+                            'head_softmax.mlp.weight', 
+                            'head_softmax.batch_norm.bias',
+                            'head_center.mlp.weight',
+                            'head_center.batch_norm.bias']
+            for name, value in net.named_parameters():
+                if name in freezed_layers:
+                    value.requires_grad = False
 
         
         if config.lr_scheduler == True:
