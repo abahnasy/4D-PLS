@@ -285,7 +285,7 @@ class ModelTrainervnDGCNN:
                 torch.save(save_dict, checkpoint_path)
 
             # validation process
-            if config.val_pls == True and self.epoch%5 == 0:
+            if config.val_sem == True and self.epoch%5 == 0:
                 self.val_sem_seg(config, net, val_loader, self.epoch, loss_type)
             
             self.epoch += 1

@@ -5,6 +5,7 @@
 *.npy
 ngrok
 *.zip
+*.ply
 
 
 /.cache
