@@ -110,6 +110,7 @@ class ModelTrainervnDGCNN:
             self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=config.max_epoch, eta_min=0, last_epoch=-1, verbose=True)
             # if resume_training == True:
             #     self.lr_scheduler.load_state_dict(pretrained_model['scheduler'])
+        
         net.to(self.device)   
 
          # Path of the result folder
@@ -122,7 +123,7 @@ class ModelTrainervnDGCNN:
 
 
         self.train_logger = SummaryWriter(log_dir=config.saving_path+'/runs/train')
-        if config.val_pls == True:
+        if config.val_sem == True:
             self.val_logger = SummaryWriter(log_dir=config.saving_path+'/runs/validation')
         return
     
@@ -151,6 +152,7 @@ class ModelTrainervnDGCNN:
         best_train_acc = 0.
         if config.resume_training:
             self.global_step = (self.epoch+1)*len(train_loader)
+        
         while self.epoch < config.max_epoch: 
             net.train()
             # Training loop

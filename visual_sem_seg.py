@@ -52,9 +52,10 @@ def visualize_semantic_acc(pc, probs, labels, label_values, ignored_labels, abs_
     colors = np.zeros((total, 3))
     colors[:,0] = 1 # mark all as incorrect
     correct = np.where(preds == labels)
-    d_print(correct)
+    
+    # d_print(correct[1])
     # d_print(correct.shape)
-    colors[correct] = np.array([0,1,0]) # mark as green
+    colors[correct[1]] = np.array([0,1,0]) # mark as green
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(pc)
@@ -87,36 +88,38 @@ def visualize_semantic_acc(pc, probs, labels, label_values, ignored_labels, abs_
 
 if __name__ == '__main__':
 
+    config = Config()
+    config.saving_path = './visuals/sem_seg_acc'
+
     DATASET_PATH = './data'
-    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train', balance_classes= True, num_samples=1, augmentation='aligned',verbose=False)
-    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val', num_samples=1, augmentation='aligned',verbose=False)
+    train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train', balance_classes= False, num_samples=10, augmentation='aligned',verbose=False)
+    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val', balance_classes= True, num_samples=10, in_R=51., saving_path = config.saving_path, augmentation='aligned',verbose=False)
     train_loader = DataLoader(train_set, batch_size= 1, num_workers=1, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 1, num_workers=1, shuffle=False, pin_memory=True)
     
     net=vnDGCNN(val_set.label_values, val_set.ignored_labels)
-
-    chkp_path = './results/vndgcnn/Experiments0129/I_250_balance_class/checkpoints/current_chkp.tar'
+    chkp_path = './results/vndgcnn/Experiments0202/I_250_balanced_sampling_old_gaussian/checkpoints/best_chkp.tar'
     pretrained_model = torch.load(chkp_path, map_location='cpu')
     net.load_state_dict(pretrained_model['model_state_dict'], strict=True)
 
-    config = Config()
-    config.saving_path = './visuals/sem_seg_acc'
     
     with torch.no_grad():
-        # for batch in val_loader:
-        #     sample_gpu = batch
-        #     outputs, _, _, _ = net(sample_gpu['in_fts'][:,:,:3])
-        #     viz_pc = sample_gpu['in_pts'].squeeze()
-        #     break
-        # s_ind = sample_gpu['s_ind']
-        # f_ind = sample_gpu['f_ind']
-
-        sample_gpu = train_set[0]
-        viz_pc = sample_gpu['in_pts'].squeeze()
-        outputs, _, _, _ = net(torch.tensor(sample_gpu['in_pts']).unsqueeze(0))
-        s_ind = 0
-        f_ind = 0
-        filename = '{:s}_{:07d}'.format(val_loader.dataset.sequences[s_ind], f_ind)
+        for batch in val_loader:
+            sample_gpu = batch
+            outputs, _, _, _ = net(sample_gpu['in_fts'][:,:,:3])
+            viz_pc = sample_gpu['in_pts'].squeeze()
+            break
+        s_ind = sample_gpu['s_ind']
+        f_ind = sample_gpu['f_ind']
+        
+        # s_ind = 0
+        # f_ind = 0
+        # sample_gpu = train_set[f_ind]
+        # viz_pc = sample_gpu['in_fts'][:,:3]
+        # outputs, _, _, _ = net(torch.tensor(sample_gpu['in_fts'][:,:3]).unsqueeze(0))
+        d_print(val_loader.dataset.sequences[s_ind])
+        d_print(f_ind)
+        filename = '{:s}_{:07d}'.format(val_loader.dataset.sequences[s_ind], int(f_ind))
         visualize_semantic_acc(
             viz_pc,
             outputs.cpu(), 

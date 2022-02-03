@@ -141,7 +141,8 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
     :param times: time value normalized between 0-1 Nx1
     :return: instance loss
     """
-
+    # AP=0.
+    # Acc=0.
     instances = torch.unique(ins_labels)
     loss = torch.tensor(0.0).to(embeddings.device)
     loss.requires_grad = True
@@ -160,7 +161,6 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
         # d_print(points.shape)
         # d_print(times.shape)
         embeddings = torch.cat((embeddings, points, times), 1) #AB: fix 
-
     assert embeddings.shape[1] == variances.shape[1], "error"
 
     for instance in instances:
@@ -179,13 +179,17 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
             idx = ins_idxs[0][indices[random_center]]           # the index of one of the points with highest objectness scores
             mean = embeddings[idx]  # 1xD
             var = variances[idx]
-            probs = new_pdf_normal(embeddings, mean, var)
+            probs = old_pdf_normal(embeddings, mean, var)
             labels = (ins_labels == instance) * 1.0             # ground truth: shape[B*N] whether the point belongs to the instance
-            ratio = torch.sum(ins_labels == 0)/(torch.sum(ins_labels == instance)*1.0+ torch.sum(probs > 0.5))  # non instance points / number of points predicted to be this instance
+            ratio = torch.sum(ins_labels == 0)/(torch.sum(ins_labels == instance)*1.0+ torch.sum(probs > 0.5))  
+            # ratio = non instance points / (number of points belonging to this instance + predicted to be this instance)
             # TSY: ratio gives instances with less points a larger weight
-            # TSY: weights: points truly or predicted as belonging to this instance  = (1+ratio), other instance points = 1, non instance points = 0
+            # TSY: weights: points belonging to this instance & predicted to be this instance  = (1+ratio), other instance points = 1, non instance points = 0
             weights = ((ins_labels == instance) | (probs >0.5)) * ratio + (ins_labels >= 0) * 1 #new loss 
             
+            # AP += torch.sum((probs >0.5)==(ins_labels == instance)) / torch.sum((probs >0.5))
+            # Acc += torch.sum(((probs>0.5)==(ins_labels == instance))) / len(ins_labels)
+            # d_print(torch.sum(((probs>0.5)==(ins_labels == instance))))
             # counts = torch.gt(probs, 0.5)
             # d_print('probs > 0.5:{}'.format(counts.sum()))
             # unique_values, counts = torch.unique(labels, return_counts=True)
@@ -194,6 +198,15 @@ def iou_instance_loss(centers_p, embeddings, variances, ins_labels, points=None,
             # d_print(counts)
             
             loss = loss + weighted_mse_loss(probs, labels, weights)
+    
+    # if 0 in instances:
+    #     # AP/=(len(instances)-1)
+    #     Acc/=(len(instances)-1)
+    # else:
+    #     # AP /= len(instances)
+    #     Acc /= len(instances)
+    # d_print('AP:{}'.format(AP))
+    # d_print('Acc:{}'.format(Acc))
 
     return loss
 
