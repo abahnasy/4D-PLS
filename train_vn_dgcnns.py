@@ -1,11 +1,16 @@
 import importlib
 import os, time
+import logging
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import hydra
 from omegaconf import DictConfig, OmegaConf
+
+# A logger for this file
+log = logging.getLogger(__name__)
+
 
 from models.vn_dgcnn_sem_seg import VNDGCNN
 from utils.trainer_vn_dgcnn import ModelTrainerVNDGCNN
@@ -38,7 +43,7 @@ def my_app(cfg : DictConfig) -> None:
     if cfg.saving:
         cfg.saving_path = time.strftime('results/Log_%Y-%m-%d_%H-%M-%S', time.gmtime())
         cfg.saving_path = hydra.utils.to_absolute_path(cfg.saving_path)
-        d_print(os.path.abspath(cfg.saving_path))
+        log.info(os.path.abspath(cfg.saving_path))
     # cfg.trainer.lr_decays = {i: 0.1 ** (1 / 200) for i in range(1, cfg.trainer.max_epoch)}
     print(OmegaConf.to_yaml(cfg))
     # prepare dataset and loaders
@@ -84,6 +89,7 @@ def my_app(cfg : DictConfig) -> None:
         train_set.ignored_labels,
         pretreianed_weights=cfg.model.pretrained_weights,
         freeze_head_weights=cfg.model.freeze_head_weights,
+        ckpt_path = cfg.model.ckpt_path,
         class_w=cfg.trainer.class_w
         ).to(device)
     # net = VNDGCNN_v1(train_set.label_values, train_set.ignored_labels, pretreianed_weights=False).to(device)
@@ -91,12 +97,12 @@ def my_app(cfg : DictConfig) -> None:
     count_parameters(net)
     
 
-    d_print("launcing the training")
+    log.info("launcing the training")
     trainer = ModelTrainerVNDGCNN(net, cfg.trainer, chkp_path=chosen_chkp)
     if cfg.trainer.style == 'train':
         trainer.train(net, train_loader, val_loader, cfg.trainer)
-    elif cfg.trainer.style == 'overfit':
-        trainer.overfit4D(net, train_loader, cfg.trainer)
+    elif cfg.trainer.style == 'val':
+        trainer.validation_pls(net, val_loader, cfg.trainer)
     else:
         raise ValueError("unknow style")
     

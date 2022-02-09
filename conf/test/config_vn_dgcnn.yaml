@@ -1,0 +1,28 @@
+# ckpt_path: './results/Log_2020-10-06_16-51-05_30'
+val_dataset:
+  num_samples: 80
+  augmentation: align
+  balance_classes: false
+  requested_sequences:
+  - 4
+  in_R: 51
+val_loader:
+  shuffle: false
+  batch_size: 1
+  num_workers: 1
+  pin_memory: true
+model:
+  name: VNDGCNN
+  pretrained_weights: true
+  freeze_head_weights: false
+  ckpt_path: ./pretrained_weights/vn_dgcnn/best_chkp.tar
+tester:
+  global_fet: false
+  sampling: importance
+  decay_sampling: 
+  stride: 1
+  first_subsampling_dl: 0.061
+  n_frames: 4
+  n_test_frames: 4
+  saving: true
+  saving_path: ${ckpt_path}

@@ -1,5 +1,8 @@
+import logging
+from multiprocessing.sharedctypes import Value
 
 import hydra
+import open3d as o3d
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
@@ -14,7 +17,7 @@ from models.losses import isnan
 from utils.debugging import d_print
 
 # PLY reader
-from utils.ply import read_ply, write_ply
+# from utils.ply import read_ply, write_ply
 
 # Metrics
 from utils.metrics import IoU_from_confusions, fast_confusion
@@ -23,6 +26,8 @@ from utils.config import Config, bcolors
 
 # from models.blocks import KPConv
 
+logger = logging.getLogger(__name__)
+
 def get_lr(optimizer):
     ret = []
     for param_group in optimizer.param_groups:
@@ -30,11 +35,66 @@ def get_lr(optimizer):
     return ", ".join(ret)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-#
-#           Trainer Class
-#       \*******************/
-#
+def visualize_semantic_acc(pc, probs, labels, label_values, ignored_labels, abs_path):
+    """ Write colored point cloud into val_preds folder
+    Args:
+        outputs: predicted semantic labels
+        labels: gt data
+    Return:
+        None
+    """
+    assert pc.shape[1] == 3
+    d_print(pc.shape)
+    # get correctly classified labels
+    # plot them in green
+    # plot wrongly classified in red
+    probs = probs.view(-1,19)
+    # Set all ignored labels to -1 and correct the other label to be in [0, C-1] range
+    for l_ind, label_value in enumerate(label_values):
+        if label_value in ignored_labels:
+            probs = np.insert(probs, l_ind, 0, axis=1)
+    preds = label_values[np.argmax(probs, axis=1)]
+    preds = torch.from_numpy(preds)
+    # preds.to(outputs.device)
+
+
+
+    # predicted = torch.argmax(outputs, dim=1)
+    total = preds.size(0)
+    colors = np.zeros((total, 3))
+    colors[:,0] = 1 # mark all as incorrect
+    correct = np.where(preds == labels.squeeze(0))
+    # d_print(correct.shape)
+    colors[correct] = np.array([0,1,0]) # mark as green
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(pc)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+
+    o3d.io.write_point_cloud("{}.ply".format(abs_path), pcd)
+    if os.path.exists("{}.ply".format(abs_path)):
+        d_print("successful write on desk", bcolors.OKGREEN)
+    else:
+        d_print("Invalid Point CLoud write", bcolors.FAIL)
+
+    # write another ply file for semantics of the things class
+    things_idx = np.where(np.logical_and(preds > 0,preds < 9))
+    pc = pc[things_idx]
+    d_print("things shape: {}".format(pc.shape))
+    colors = np.zeros((pc.shape[0], 3))
+    colors[:] = np.array([0,1,1])
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(pc)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+
+
+    o3d.io.write_point_cloud("{}_{}.ply".format(abs_path, "things"), pcd)
+    if os.path.exists("{}_{}.ply".format(abs_path, "things")):
+        d_print("successful write on desk", bcolors.OKGREEN)
+    else:
+        d_print("Invalid Point CLoud write", bcolors.FAIL)
+
+
 
 
 class ModelTrainerVNDGCNN:
@@ -78,7 +138,7 @@ class ModelTrainerVNDGCNN:
         # deform_lr = config.learning_rate * config.deform_lr_factor
         var_lr =  1e-3
         if config.optimizer.name == 'sgd':
-            d_print("SGD Optimizer")
+            logger.info("SGD Optimizer")
             self.optimizer = torch.optim.SGD(
                 [
                     {'params': other_params},
@@ -90,7 +150,7 @@ class ModelTrainerVNDGCNN:
                 weight_decay=config.optimizer.weight_decay
             )
         elif config.optimizer.name == 'adam':
-            d_print("Adam Optimizer")
+            logger.info("Adam Optimizer")
             self.optimizer = torch.optim.Adam(
                 [
                     {'params': other_params},
@@ -102,7 +162,7 @@ class ModelTrainerVNDGCNN:
                 weight_decay=config.optimizer.weight_decay
             )
         elif config.optimizer.name == 'adamw':
-            d_print("AdamW Optimizer")
+            logger.info("AdamW Optimizer")
             self.optimizer= torch.optim.AdamW(
                 [
                     {'params': other_params},
@@ -116,12 +176,13 @@ class ModelTrainerVNDGCNN:
         else:
             raise NotImplementedError
 
-
-        
-        self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            self.optimizer, 
-            milestones=config.lr_scheduler.milestones, 
-            gamma=config.lr_scheduler.gamma)
+        # lr_scheduler = config.getattr("lr_scheduler", None)
+        # if lr_scheduler:
+        #     self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        #         self.optimizer, 
+        #         milestones=config.lr_scheduler.milestones, 
+        #         gamma=config.lr_scheduler.gamma
+        #         )
         #MultiStepLR(optimizer, milestones=[30,80], gamma=0.1)
 
         # Choose to train on CPU or GPU
@@ -248,8 +309,8 @@ class ModelTrainerVNDGCNN:
                     self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
                     self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
                     self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/variance_loss', net.variance_loss.item(), self.global_step)
+                    self.train_logger.add_scalar('Loss/variance_l2', net.variance_l2.item(), self.global_step)
                 elif config.task == 'sem_seg':
                     loss = net.cross_entropy_loss(outputs, sample_gpu['in_lbls'])
                     self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
@@ -257,16 +318,31 @@ class ModelTrainerVNDGCNN:
                     raise ValueError("unknow requested task")
                 acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
                 
-                # net.plot_class_statistics(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                nan_idx = torch.isnan(ious)
-                ious[nan_idx] = 0.
+                
+                
+                ious, meanIoU = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
                 for i, iou in enumerate(ious):
-                    if isnan(iou):
-                        iou = 0.
                     self.train_logger.add_scalar('iou/{}'.format(i), iou, self.global_step)    
                 # log mean IoU
-                self.train_logger.add_scalar('iou/mIoU', ious.mean(), self.global_step)    
+                self.train_logger.add_scalar('iou/mIoU', meanIoU, self.global_step)    
+                
+                
+                # ious = net.fast_semantic_seg_metric(
+                #     outputs.detach().cpu(), 
+                #     sample_gpu['in_lbls'].cpu(), 
+                #     train_loader.dataset.label_values, 
+                #     train_loader.dataset.ignored_labels
+                # )
+                # # d_print(ious)
+                # # nan_idx = torch.isnan(ious)
+                # if np.any(np.isnan(ious)): raise ValueError("should not be nan !!")
+                # # ious[nan_idx] = 0.
+                # for i, iou in enumerate(ious):
+                #     # if isnan(iou):
+                #         # iou = 0.
+                #     self.train_logger.add_scalar('iou/{}'.format(i), iou, self.global_step)    
+                # # log mean IoU
+                # self.train_logger.add_scalar('iou/mIoU', ious.mean(), self.global_step)    
                 #AB: log into tensorbaord
                 self.train_logger.add_scalar('acc', acc*100, self.global_step)
                 
@@ -283,7 +359,7 @@ class ModelTrainerVNDGCNN:
                
                 if config.task == 'pls':
                     message = 'e{:03d}-i{:04d} => L={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} L_VL2={:.3f} acc={:3.0f}'
-                    print(message.format(self.epoch, self.step,
+                    logger.info(message.format(self.epoch, self.step,
                                             loss.item(),
                                             net.center_loss.item(),
                                             net.instance_loss.item(),
@@ -296,7 +372,7 @@ class ModelTrainerVNDGCNN:
                                             ))
                 elif config.task == 'sem_seg':
                     message = 'e{:03d}-i{:04d} => L={:.3f} acc={:3.0f}'
-                    print(message.format(self.epoch, self.step,
+                    logger.info(message.format(self.epoch, self.step,
                                             loss.item(),
                                             # net.center_loss.item(),
                                             # net.instance_loss.item(),
@@ -316,7 +392,7 @@ class ModelTrainerVNDGCNN:
                         self.validation_sem_seg(net, val_loader, config)
                     elif config.task == 'pls':
                         pass
-                        self.validation_pls(net, val_loader, config)
+                        # self.validation_pls(net, val_loader, config)
                     else:
                         raise NotImplementedError
                     #TODO: implement the mini validation function 
@@ -334,7 +410,7 @@ class ModelTrainerVNDGCNN:
 
             # Update epoch
             self.epoch += 1
-            self.lr_scheduler.step()
+            # self.lr_scheduler.step()
 
             # Saving
             # if config.saving:
@@ -367,220 +443,12 @@ class ModelTrainerVNDGCNN:
     # Validation methods
     # ------------------------------------------------------------------------------------------------------------------
 
-    def overfit4D(self, net, training_loader, config):
-        # overfit over the first batch in the loader
-        for batch in training_loader:
-            self.step = 0
-            for epoch in range(config.max_epoch):
-                # move to device (GPU)
-                net.train()
-                sample_gpu ={}
-                if 'cuda' in self.device.type:
-                    for k, v in batch.items():
-                        sample_gpu[k] = v.to(self.device)
-                else:
-                    sample_gpu = batch
-                # zero the parameter gradients
-                self.optimizer.zero_grad()
-                # extract data used in loss functions 
-                # split centers and times -> original feats composition [x,y,z,r,c1,c2,c3,objectness,time]
-                centers = sample_gpu['in_fts'][:,:,4:8]
-                times = sample_gpu['in_fts'][:,:,8]
-                # prepare inputs for PointNet Architecture
-                sample_gpu['in_fts'] = sample_gpu['in_fts'][:,:,:3].transpose(2,1) #TODO: fix the feature handling with the dataloader !
-                # Forward pass
-                outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'])
-                # plot histograms for point classification
-                # d_print(outputs.shape)
-                
-                plot = outputs.view(-1,19)
-                # d_print(plot.shape)
-                plot = torch.argmax(outputs, dim=2)
-                # d_print(plot.shape)
-                # d_print(plot)
-                gt_plt = sample_gpu['in_lbls'].view(-1,).long()
-                # d_print(gt_plt.shape)
-                # d_print(gt_plt)
-                
-                
-                self.train_logger.add_histogram("predicted_classes",plot[0], self.global_step, bins=19)
-                self.train_logger.add_histogram("gt_classes",gt_plt, 0, bins=19)
-
-                # getting loss 
-                if config.task == 'pls':
-                    loss = net.loss(
-                        outputs, centers_output, var_output, embedding, 
-                        sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)
-                    # log specific losses values
-                    self.train_logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                    self.train_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
-                elif config.task == 'sem_seg':
-                    loss = net.cross_entropy_loss(outputs, sample_gpu['in_lbls'])
-                    self.train_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                else:
-                    raise ValueError("unknow requested task")
-                # calculate metrics
-                acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                
-                ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                nan_idx = torch.isnan(ious)
-                ious[nan_idx] = 0.
-
-                for i, iou in enumerate(ious):
-                    if isnan(iou):
-                        iou = 0.
-                    self.train_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
-                # log mean IoU
-                self.train_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
-                #AB: log into tensorbaord
-                self.train_logger.add_scalar('acc', acc*100, self.global_step)
-                
-                loss.backward()
-                if config.grad_clip_norm > 0:
-                    # torch.nn.utils.clip_grad_norm_(net.parameters(), config.grad_clip_norm)
-                    torch.nn.utils.clip_grad_value_(net.parameters(), config.grad_clip_norm)
-                self.optimizer.step()
-                # torch.cuda.synchronize(self.device)
-                # t += [time.time()]
-                # # Average timing
-                # if self.step < 2:
-                #     mean_dt = np.array(t[1:]) - np.array(t[:-1])
-                # else:
-                #     mean_dt = 0.9 * mean_dt + 0.1 * (np.array(t[1:]) - np.array(t[:-1]))
-
-                # Console display (only one per second)
-                # if (t[-1] - last_display) > 1.0:
-                    # last_display = t[-1]
-                if config.task == 'pls':
-                    message = 'e{:03d}-i{:04d} => L={:.3f} L_C={:.3f} L_I={:.3f} L_V={:.3f} L_VL2={:.3f} acc={:3.0f}'
-                    print(message.format(self.epoch, self.step,
-                                            loss.item(),
-                                            net.center_loss.item(),
-                                            net.instance_loss.item(),
-                                            net.variance_loss.item(),
-                                            net.variance_l2.item(),
-                                            100 * acc,
-                                            #  1000 * mean_dt[0],
-                                            #  1000 * mean_dt[1],
-                                            #  1000 * mean_dt[2]
-                                            ))
-                elif config.task == 'sem_seg':
-                    message = 'e{:03d}-i{:04d} => L={:.3f} acc={:3.0f}'
-                    print(message.format(self.epoch, self.step,
-                                            loss.item(),
-                                            # net.center_loss.item(),
-                                            # net.instance_loss.item(),
-                                            # net.variance_loss.item(),
-                                            # net.variance_l2.item(),
-                                            100 * acc,
-                                            #  1000 * mean_dt[0],
-                                            #  1000 * mean_dt[1],
-                                            #  1000 * mean_dt[2]
-                                            ))
-                else:
-                    raise ValueError("unknown task")
-
-                # Log file
-                # if config.saving:
-                #     with open(join(config.saving_path, 'training.txt'), "a") as file:
-                #         message = '{:d} {:d} {:.3f} {:.3f} {:.3f} {:.3f}\n'
-                #         file.write(message.format(self.epoch,
-                #                                   self.step,
-                #                                   net.output_loss,
-                #                                   net.reg_loss,
-                #                                   acc,
-                #                                   t[-1] - t0))
-
-                self.step += 1
-                self.lr_scheduler.step()
-            
-                # validate the model with the rotated version fo the batch
-                if self.global_step %5 == 0:
-                    d_print("Validation phase ", bcolors.OKBLUE)
-                    net.eval()
-                    with torch.no_grad():
-                        rotation_opts = np.array([5,10,15], dtype=np.float32)
-                        # rotation_opts = np.array([i for i in range(0,355,5)], dtype=np.float32)
-                        rot_angle = np.random.choice(rotation_opts)
-                        # d_print("chosen rotation is {}".format(rot_angle))
-                        # rotation matrix
-                        c = np.cos(rot_angle*np.pi / 180.)
-                        s = np.sin(rot_angle*np.pi / 180.)
-                        rot_mat = np.array([
-                            [c, -s,  0],
-                            [s,  c,  0],
-                            [0,  0,  1]
-                            ], dtype=np.float32)
-                        pts = batch['in_fts'][:,:,:3].numpy()
-                        ctr = pts.mean(axis=0) 
-                        pts = np.dot(pts-ctr, rot_mat) + ctr
-                        pts = torch.from_numpy(pts).cuda().transpose(2,1)
-                        # d_print("rotated points shape: ", pts.shape)
-                        outputs, _, _, _ = net(pts)
-                            # getting loss 
-                        if config.task == 'pls':
-                            loss = net.loss(
-                                outputs, centers_output, var_output, embedding, 
-                                sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)
-                            # log specific losses values
-                            self.val_logger.add_scalar('Loss/total', loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/center_loss', net.center_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/instance_half_loss', net.instance_half_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/instance_loss', net.instance_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/center_loss', net.variance_loss.item(), self.global_step)
-                            self.val_logger.add_scalar('Loss/variance_loss', net.variance_l2.item(), self.global_step)
-                        elif config.task == 'sem_seg':
-                            loss = net.cross_entropy_loss(outputs, sample_gpu['in_lbls'])
-                            print("val loss: {}".format(loss.item()))
-                            self.val_logger.add_scalar('Loss/cross_entropy', net.output_loss.item(), self.global_step)
-                        else:
-                            raise ValueError("unknow requested task")
-                        # calculate metrics
-                        acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                        
-                        ious = net.semantic_seg_metric(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                        nan_idx = torch.isnan(ious)
-                        ious[nan_idx] = 0.
-
-                        for i, iou in enumerate(ious):
-                            if isnan(iou):
-                                iou = 0.
-                            self.val_logger.add_scalar('ious/{}'.format(i), iou, self.global_step)    
-                        # log mean IoU
-                        self.val_logger.add_scalar('ious/meanIoU', ious.mean(), self.global_step)    
-                        #AB: log into tensorbaord
-                        self.val_logger.add_scalar('acc', acc*100, self.global_step)
-                
-                self.global_step += 1
-            break
-
-            ##############
-            # End of epoch
-            ##############
-
-            # Check kill signal (running_PID.txt deleted)
-            # if config.saving and not exists(PID_file):
-            #     break
-
-            # Update learning rate
-            # if self.epoch in config.lr_decays:
-            #     for param_group in self.optimizer.param_groups:
-            #         param_group['lr'] *= config.lr_decays[self.epoch]
-
-            # Update epoch
-            self.epoch += 1
-
     def validation_pls(self, net, val_loader, config):
         """ Validation function, gives ious and accuracy
         """
+        logger.info("Launching validation function")
         softmax = torch.nn.Softmax(1)
-        # Create folder for validation predictions
+        # Create folder for validation predictions, Visualizations files
         if not exists(join(config.saving_path, 'val_preds')):
             makedirs(join(config.saving_path, 'val_preds'))
         # Number of classes including ignored labels
@@ -591,30 +459,67 @@ class ModelTrainerVNDGCNN:
         val_i = 0
         c_ious = []
         s_ious = []
-        subsampled_acc = []
+        t_acc = []
+        # loss buffers
+        t_total_loss = []
+        t_cross_entropy_loss = []
+        t_center_loss = []
+        t_instance_half_loss = []
+        t_instance_loss = []
+        t_variance_loss = []
+        t_variance_l2_loss = []
         # o_scores = []
         # Start validation loop
         for i, batch in enumerate(val_loader):
+            logger.info("Evaluating batch: {} / {}".format(i, len(val_loader)))
             batch_size = batch['in_fts'].shape[0]
             num_points = batch['in_fts'].shape[1]
+            s_ind = batch['s_ind'][0] # under assumption only one sample per batch
+            f_ind = batch['f_ind'][0]
+
             # Forward pass
             with torch.no_grad():
                 sample_gpu = {}
                 if 'cuda' in self.device.type:
                     for k, v in batch.items():
-                        if k in ['in_fts', 'in_lbls', 'in_slbls']:
+                        if k in ['in_pts', 'in_fts', 'in_lbls', 'in_slbls']:
                             sample_gpu[k] = v.to(self.device)
                 else:
                     sample_gpu = batch
                 centers = sample_gpu['in_fts'][:,:,4:8]
                 times = sample_gpu['in_fts'][:,:,8]
+                # save for visualization
+                viz_pc = sample_gpu['in_fts'][:,:,:3].squeeze(0).cpu().numpy()
                 # prepare inputs for PointNet Architecture
                 sample_gpu['in_fts'] = sample_gpu['in_fts'][:,:,:3].transpose(2,1) #TODO: fix the feature handling with the dataloader !
                 # Forward pass
                 outputs, centers_output, var_output, embedding = net(sample_gpu['in_fts'])
+                # get the loss and log into tensorboard
+                loss = net.loss(
+                    outputs, centers_output, var_output, embedding, 
+                    sample_gpu['in_lbls'], sample_gpu['in_slbls'], centers, sample_gpu['in_pts'], times)
+                t_total_loss.append(loss.item())
+                t_cross_entropy_loss.append(net.output_loss.item())
+                t_center_loss.append(net.center_loss.item())
+                t_instance_half_loss.append(net.instance_half_loss.item())
+                t_instance_loss.append(net.instance_loss.item())
+                t_variance_loss.append(net.variance_loss.item())
+                t_variance_l2_loss.append(net.variance_l2.item())
+                # get the performance over the subsampled point cloud (the one used )
+                
                 # get the performance over the subsampled point cloud (the one used in the backbone !)
                 acc = net.accuracy(outputs.cpu(), sample_gpu['in_lbls'].cpu())
-                subsampled_acc.append(acc)
+                t_acc.append(acc)
+                # create name and path for the accuracy point cloud
+                filename = '{:s}_{:07d}'.format(val_loader.dataset.sequences[s_ind], f_ind)
+                visualize_semantic_acc(
+                    viz_pc,
+                    outputs.cpu(), 
+                    sample_gpu['in_lbls'].cpu(),
+                    val_loader.dataset.label_values,
+                    val_loader.dataset.ignored_labels,
+                    os.path.join(config.saving_path, 'val_preds', filename)
+                )
                 # TODO: get mIOU metrics for subsampled point cloud
 
                 probs = softmax(outputs.view(-1, 19)).cpu().detach().numpy()
@@ -645,80 +550,94 @@ class ModelTrainerVNDGCNN:
             centers_output = centers_output.view(batch_size*num_points, -1)
             centers_output = centers_output.cpu().detach().numpy()
             ins_preds = ins_preds.cpu().detach().numpy()
-            s_inds_list = batch['s_ind'] # list of sequences in the batch
-            f_inds_list = batch['f_ind'] # list of the frames in the batch
-            proj_inds_list = batch['proj_inds']
+            # s_inds_list = batch['s_ind'] # list of sequences in the batch
+            # f_inds_list = batch['f_ind'] # list of the frames in the batch
+            # proj_inds_list = batch['proj_inds']
             # loop for every frame in the batch
             i0 = 0
             # Get predictions and labels per volume in batch
-            for volume_idx in range(batch_size):
+            for volume_idx in range(batch_size): # useless loop since we use only 1 sample / batch
                 probs = stk_probs[i0:i0 + num_points]
                 center_probs  = centers_output[i0:i0 + num_points]
-                ins_probs = ins_preds[i0:i0 + num_points]
-                s_ind = s_inds_list[volume_idx]
-                f_ind = f_inds_list[volume_idx]
-                proj_inds = proj_inds_list[volume_idx]
-                proj_mask = batch['reproj_mask'][volume_idx].numpy()
-                frame_labels = batch['val_labels_list'][volume_idx].numpy() # original unsampled point cloud labels
-                centers_gt = batch['val_center_label_list'][volume_idx].numpy()
+                # ins_probs = ins_preds[i0:i0 + num_points]
+                # s_ind = s_inds_list[volume_idx]
+                # f_ind = f_inds_list[volume_idx]
+                # proj_inds = proj_inds_list[volume_idx]
+                # proj_mask = batch['reproj_mask'][volume_idx].numpy()
+                # frame_labels = batch['val_labels_list'][volume_idx].numpy() # original unsampled point cloud labels
+                frame_labels = sample_gpu['in_lbls'].cpu().numpy()
+                centers_gt = centers.cpu().numpy()
                 # project predictions on the original frame points
-                proj_probs = probs[proj_inds]
-                proj_center_probs = center_probs[proj_inds]
-                proj_ins_probs = ins_probs[proj_inds]
+                # proj_probs = probs[proj_inds]
+                # proj_center_probs = center_probs[proj_inds]
+                # proj_ins_probs = ins_probs[proj_inds]
                 # Insert false columns for ignored labels
                 for l_ind, label_value in enumerate(val_loader.dataset.label_values):
                     if label_value in val_loader.dataset.ignored_labels:
                         probs = np.insert(probs, l_ind, 0, axis=1)
                 # Predicted labels
-                preds = val_loader.dataset.label_values[np.argmax(proj_probs, axis=1)]
+                preds = val_loader.dataset.label_values[np.argmax(probs, axis=1)]
 
                 # Save predictions in a binary file
-                filename = '{:s}_{:07d}.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
-                filename_c = '{:s}_{:07d}_c.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
-                filename_i = '{:s}_{:07d}_i.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
-                filepath = join(config.saving_path, 'val_preds', filename)
-                filepath_c = join(config.saving_path, 'val_preds', filename_c)
-                filepath_i = join(config.saving_path, 'val_preds', filename_i)
+                # filename = '{:s}_{:07d}.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
+                # filename_c = '{:s}_{:07d}_c.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
+                # filename_i = '{:s}_{:07d}_i.npy'.format(val_loader.dataset.sequences[s_ind], f_ind)
+                # filepath = join(config.saving_path, 'val_preds', filename)
+                # filepath_c = join(config.saving_path, 'val_preds', filename_c)
+                # filepath_i = join(config.saving_path, 'val_preds', filename_i)
 
-                if exists(filepath):
-                    frame_preds = np.load(filepath)
-                    center_preds = np.load(filepath_c)
-                    ins_preds = np.load(filepath_i)
+                # if exists(filepath):
+                #     frame_preds = np.load(filepath)
+                #     center_preds = np.load(filepath_c)
+                #     ins_preds = np.load(filepath_i)
 
-                else:
-                    frame_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
-                    center_preds = np.zeros(frame_labels.shape, dtype=np.float32)
-                    ins_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
+                # else:
+                #     frame_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
+                #     center_preds = np.zeros(frame_labels.shape, dtype=np.float32)
+                #     ins_preds = np.zeros(frame_labels.shape, dtype=np.uint8)
 
-                center_preds[proj_mask] = proj_center_probs[:, 0]
-                frame_preds[proj_mask] = preds.astype(np.uint8)
-                ins_preds[proj_mask] = proj_ins_probs
-                np.save(filepath, frame_preds)
-                np.save(filepath_c, center_preds)
-                np.save(filepath_i, ins_preds)
+                # center_preds[proj_mask] = proj_center_probs[:, 0]
+                # frame_preds[proj_mask] = preds.astype(np.uint8)
+                # ins_preds[proj_mask] = proj_ins_probs
+                # np.save(filepath, frame_preds)
+                # np.save(filepath_c, center_preds)
+                # np.save(filepath_i, ins_preds)
                 
                 
                 center_gt = centers_gt[:, 0]
-                c_iou = (np.sum(np.logical_and(center_preds > 0.5, center_gt > 0.5))) / \
-                        (np.sum(center_preds > 0.5) + np.sum(center_gt > 0.5) + 1e-10)
+                c_iou = (np.sum(np.logical_and(center_probs > 0.5, center_gt > 0.5))) / \
+                        (np.sum(center_probs > 0.5) + np.sum(center_gt > 0.5) + 1e-10)
+                logger.info("batch_ciou {}".format(c_iou))
                 c_ious.append(c_iou)
-                s_ious.append(np.sum(center_preds > 0.5))
+                s_iou = np.sum(center_probs > 0.5)
+                logger.info("batch_siou {}".format(s_iou))
+                s_ious.append(s_iou)
 
                 # Update validation confusions
                 frame_C = fast_confusion(frame_labels,
-                                         frame_preds.astype(np.int32),
+                                         preds.astype(np.int32),
                                          val_loader.dataset.label_values)
                 val_loader.dataset.val_confs[s_ind][f_ind, :, :] = frame_C
                 
                 # Stack all prediction for this epoch
                 predictions += [preds]
-                targets += [frame_labels[proj_mask]] #AB: why retrieving from the original point cloud, you can just use the accompained labels for the batch?!
+                targets += [frame_labels] #AB: why retrieving from the original point cloud, you can just use the accompained labels for the batch?!
                 # inds += [f_inds[b_i, :]]
                 val_i += 1
                 i0 += num_points
 
+        # log specific losses values
+        self.val_logger.add_scalar('Loss/total', t_total_loss.mean(), self.global_step)
+        self.val_logger.add_scalar('Loss/cross_entropy', t_cross_entropy_loss.mean(), self.global_step)
+        self.val_logger.add_scalar('Loss/center_loss', t_center_loss.mean(), self.global_step)
+        self.val_logger.add_scalar('Loss/instance_half_loss', t_instance_half_loss.mean(), self.global_step)
+        self.val_logger.add_scalar('Loss/instance_loss', t_instance_loss.mean(), self.global_step)
+        self.val_logger.add_scalar('Loss/variance_loss', t_variance_loss.mean(), self.global_step)
+        self.val_logger.add_scalar('Loss/variance_l2', t_variance_l2_loss.mean(), self.global_step)
+        logger.info("WARNING: Don't directly compare the results of val loss and train loss curves as the batches are not equal !!")
+        
         # Plot the metrics over the subsampled point cloud
-        mean_acc = np.array(subsampled_acc).mean()
+        mean_acc = np.array(t_acc).mean()
         self.val_logger.add_scalar('acc', mean_acc*100, self.global_step)
 
         #TODO: plot mIOU 
@@ -733,7 +652,8 @@ class ModelTrainerVNDGCNN:
         C = np.sum(Confs, axis=0).astype(np.float32)
 
         # Balance with real validation proportions
-        C *= np.expand_dims(val_loader.dataset.class_proportions / (np.sum(C, axis=1) + 1e-6), 1)
+        # C *= np.expand_dims(val_loader.dataset.class_proportions / (np.sum(C, axis=1) + 1e-6), 1)
+        #TODO: check its meaning later !
 
         # Remove ignored labels from confusions
         for l_ind, label_value in reversed(list(enumerate(val_loader.dataset.label_values))):
@@ -758,13 +678,13 @@ class ModelTrainerVNDGCNN:
 
         # Print instance mean
         mIoU = 100 * np.mean(IoUs)
-        print('subpart mIoU = {:.1f} %'.format(mIoU))
+        logger.info('subpart mIoU = {:.1f} %'.format(mIoU))
         mIoU = 100 * np.mean(val_IoUs)
-        print('val mIoU = {:.1f} %'.format(mIoU))
+        logger.info('val mIoU = {:.1f} %'.format(mIoU))
         cIoU = 200 * np.mean(c_ious)
-        print('val center mIoU = {:.1f} %'.format(cIoU))
+        logger.info('val center mIoU = {:.1f} %'.format(cIoU))
         sIoU = np.mean(s_ious)
-        print('val centers sum  = {:.1f} %'.format(sIoU))
+        logger.info('val centers sum  = {:.1f} %'.format(sIoU))
 
             
 

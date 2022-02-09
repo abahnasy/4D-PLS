@@ -1,5 +1,5 @@
 saving: true
-saving_path:
+saving_path: # keep None, will be created automatically with timestamp
 train_dataset:
   num_samples: 4
   augmentation: align
@@ -7,7 +7,7 @@ train_dataset:
   requested_sequences:
   - 4
 val_dataset:
-  num_samples: 1
+  num_samples: 80
   augmentation: align
   balance_classes: false
   requested_sequences:
@@ -17,6 +17,7 @@ model:
   name: VNDGCNN
   pretrained_weights: false
   freeze_head_weights: false
+  ckpt_path: ./pretrained_weights/vn_dgcnn/best_chkp.tar
 train_loader:
   shuffle: false
   batch_size: 4
@@ -37,15 +38,15 @@ trainer:
   momentum: 0.98
   optimizer:
     name: adam
-    learning_rate: 0.01
+    learning_rate: 0.0001
     weight_decay: 0
-  lr_scheduler:
-    milestones:
-    - 50
-    - 50
-    - 300
-    gamma: 0.5
+  # lr_scheduler: #TODO: remove commented out code for schedulers to use them again !
+    # milestones:
+    # - 50
+    # - 50
+    # - 300
+    # gamma: 0.5
   free_dim: 4
-  max_epoch: 1000
+  max_epoch: 3000
   grad_clip_norm: 0.0
   class_w: []
