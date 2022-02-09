@@ -97,8 +97,17 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_set, batch_size= 1, num_workers=1, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 1, num_workers=1, shuffle=False, pin_memory=True)
     
+    # # checkpoint of DGCNN on 250 frames in sequence 4, balanced sampling, old gaussian pdf
+    # net=DGCNN_semseg(train_set.label_values, train_set.ignored_labels, input_feature_dims=4)
+    # chkp_path = './results/dgcnn/Experiments0203/I_250_balanced_sampling_old_gaussian/checkpoints/best_chkp.tar'
+
+    # # checkpoint of VN-DGCNN on 250 frames in sequence 4, balanced sampling, old gaussian pdf    
+    # net=vnDGCNN(val_set.label_values, val_set.ignored_labels)
+    # chkp_path = './results/vndgcnn/Experiments0202/I_250_balanced_sampling_old_gaussian/checkpoints/best_chkp.tar'
+    
+    # checkpoint of VN-DGCNN on 250 frames in sequence 4, unbalanced sampling, old gaussian pdf 
     net=vnDGCNN(val_set.label_values, val_set.ignored_labels)
-    chkp_path = './results/vndgcnn/Experiments0202/I_250_balanced_sampling_old_gaussian/checkpoints/best_chkp.tar'
+    chkp_path = './results/vndgcnn/I_250_wrong_gaussian_unbalanced/resume/checkpoints/best_chkp.tar'
     pretrained_model = torch.load(chkp_path, map_location='cpu')
     net.load_state_dict(pretrained_model['model_state_dict'], strict=True)
 

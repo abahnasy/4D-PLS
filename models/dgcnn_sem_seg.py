@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
 
-from models.losses_pointnet import *
+from models.losses_dgcnn import *
 
 
 

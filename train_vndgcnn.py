@@ -8,7 +8,6 @@ import numpy as np
 
 from datasets.semantic_kitti_dataset import SemanticKittiDataSet
 from models.vnDGCNN_sem_seg import vnDGCNN
-from models.vnDGCNN_ref import VNDGCNN
 from utils.trainer_vnDGCNN import ModelTrainervnDGCNN
 from utils.config import Config
 from models.dgcnn_utils import get_model_parameters
@@ -45,7 +44,6 @@ if __name__ == '__main__':
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
 
     net=vnDGCNN(train_set.label_values, train_set.ignored_labels)
-    # net = VNDGCNN(train_set.label_values,train_set.ignored_labels)
     num_parameters = get_model_parameters(net)
     print('Number of model parameters:', num_parameters)
 

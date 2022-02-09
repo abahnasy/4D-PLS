@@ -33,14 +33,14 @@ if __name__ == '__main__':
     config.grad_clip_norm = -100.0
     
     config.val_sem = False 
-    config.max_epoch = 500
+    config.max_epoch = 1000
     config.learning_rate = 0.1 
     config.lr_scheduler = False      
-    config.saving_path = './results/dgcnn/Experiments0203/'+'I_250_balanced_sampling_old_gaussian'
+    config.saving_path = './results/dgcnn/test' # save the logs and checkpoints
 
     DATASET_PATH = './data'
     train_set = SemanticKittiDataSet(path=DATASET_PATH, set='train', balance_classes= True, num_samples=250, augmentation='aligned',verbose=False)
-    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val', balance_classes= True, num_samples=20, in_R=51., saving_path = config.saving_path, augmentation='z',verbose=False)
+    val_set = SemanticKittiDataSet(path=DATASET_PATH, set='val', balance_classes= True, num_samples=20, in_R=51., saving_path = config.saving_path, augmentation='aligned',verbose=False)
     train_loader = DataLoader(train_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size= 4, num_workers=4, shuffle=False, pin_memory=True)
     
@@ -48,10 +48,11 @@ if __name__ == '__main__':
     num_parameters = get_model_parameters(net)
     print('Number of model parameters:', num_parameters)
 
+    # resume from a checkpoint
     config.resume_training = False
-    
+    # chkp_path = ''
 
-    # Training with pretrained weights
+    # Training with pretrained weights of dgcnns
     chkp_path = './results/dgcnn_semseg_pretrained/model_1.t7'
     trainer = ModelTrainerDGCNN(net, config, chkp_path=chkp_path, resume_training=config.resume_training, on_gpu=config.on_gpu)
-    trainer.train(config, net, train_loader, val_loader, loss_type='4DPLSloss')
+    trainer.train(config, net, train_loader, val_loader, loss_type='CEloss')
