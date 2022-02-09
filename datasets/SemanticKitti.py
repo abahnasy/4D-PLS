@@ -622,7 +622,12 @@ class SemanticKittiDataset(PointCloudDataset):
         centers = np.concatenate(c_list, axis=0) if not self.set  == 'validation' else np.concatenate(val_center_label_list, axis=0)
         times = np.concatenate(t_list, axis=0)
         stacked_points = np.concatenate(p_list, axis=0)
+        
+
         features = np.concatenate(f_list, axis=0)
+        # temp code for visualization
+        # np.save("./Center_points_{}_{}".format(fi_list[0][0], fi_list[0][1]), features[:,0:3])
+
         labels = np.concatenate(l_list, axis=0)
         ins_labels = np.concatenate(ins_l_list, axis=0) if not self.set == 'validation' else np.concatenate(val_ins_labels_list, axis=0)
         frame_inds = np.array(fi_list, dtype=np.int32)

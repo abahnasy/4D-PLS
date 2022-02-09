@@ -9,6 +9,8 @@ import sys
 import argparse
 import time
 
+from utils.debugging import d_print
+
 def associate_instances(previous_instances, current_instances, overlaps,  pose, association_weights):
     pose = pose.cpu().float()
     cos = torch.nn.CosineSimilarity(dim=1, eps=1e-6)
@@ -115,11 +117,21 @@ def associate_instances_overlapping_frames(previous_ins_label, current_ins_label
 
     return association_costs_matched,  associations
 
-def main(FLAGS):
-    data_cfg = 'data/semantic-kitti.yaml'
+def main(FLAGS, use_hydra = False):
+    
+    if use_hydra: #AB: in case running from run_testing.py
+        import hydra
+        data_cfg = hydra.utils.to_absolute_path('./data/semantic-kitti.yaml')
+    else:
+        data_cfg = 'data/semantic-kitti.yaml'
+    
     DATA = yaml.safe_load(open(data_cfg, 'r'))
+
     split = 'valid'
-    dataset = 'data'
+    if use_hydra:
+        dataset = hydra.utils.to_absolute_path('./data')
+    else:
+        dataset = 'data'
 
     prediction_dir =  FLAGS.predictions
     if split == 'valid':
@@ -178,7 +190,7 @@ def main(FLAGS):
     poses = []
 
     test_sequences = FLAGS.sequences
-    test_sequences= [4] #AB: TODO: fix
+    # test_sequences= [4] #AB: TODO: fix
 
     for sequence in test_sequences:
         calib = parse_calibration(os.path.join(dataset, "sequences", '{0:02d}'.format(sequence), "calib.txt"))
@@ -489,7 +501,7 @@ if __name__ == '__main__':
         '--sequences', '-s',
         dest='sequences',
         type=str,
-        default='8'
+        default='4'
     )
 
     parser.add_argument(
