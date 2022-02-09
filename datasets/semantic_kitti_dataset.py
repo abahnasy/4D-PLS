@@ -296,10 +296,10 @@ class SemanticKittiDataSet(Dataset):
         p0 = p_origin.dot(pose0.T)[:, :3]
         p0 = np.squeeze(p0)
         # save the original 4D volume data, as loaded from the desk, unchanged
-        o_pts = None # point locations in the global coordinates, after applying SLAM Pose transformations
-        o_labels = None
-        o_ins_labels= None
-        o_center_labels = None
+        # o_pts = None # point locations in the global coordinates, after applying SLAM Pose transformations
+        # o_labels = None
+        # o_ins_labels= None
+        # o_center_labels = None
 
 
 
@@ -350,14 +350,14 @@ class SemanticKittiDataSet(Dataset):
             # ===================================================================#
             
             # In case of validation, keep the original points in memory
-            if self.set in ['val', 'test'] and f_inc == 0:
-                o_pts = new_points[:, :3].astype(np.float32)
-                o_labels = sem_labels.astype(np.int32)
-                o_center_labels = center_labels
-                o_ins_labels = ins_labels.astype(np.int32)
+            # if self.set in ['val', 'test'] and f_inc == 0:
+            #     o_pts = new_points[:, :3].astype(np.float32)
+            #     o_labels = sem_labels.astype(np.int32)
+            #     o_center_labels = center_labels
+            #     o_ins_labels = ins_labels.astype(np.int32)
 
-            if self.set in ['val', 'test'] and self.n_test_frames > 1 and f_inc > 0:
-                f_inc_points.append(new_points[:, :3].astype(np.float32))
+            # if self.set in ['val', 'test'] and self.n_test_frames > 1 and f_inc > 0:
+            #     f_inc_points.append(new_points[:, :3].astype(np.float32))
             
             # ===================================================================#
             # Importance subsampling #
@@ -567,34 +567,34 @@ class SemanticKittiDataSet(Dataset):
         # so the predictions done on the subsampled one could be reflected on the original point cloud
         # ===================================================================#
         # Before augmenting, compute reprojection inds (only for validation and test)
-        if self.set in ['val', 'test']:
-            # get val_points that are in range
-            radiuses = np.sum(np.square(o_pts - p0), axis=1)
-            reproj_mask = radiuses < (0.99 * self.in_R) ** 2
+        # if self.set in ['val', 'test']:
+        #     # get val_points that are in range
+        #     radiuses = np.sum(np.square(o_pts - p0), axis=1)
+        #     reproj_mask = radiuses < (0.99 * self.in_R) ** 2
 
-            # Project predictions on the frame points
-            search_tree = KDTree(in_pts, leaf_size=50)
-            proj_inds = search_tree.query(o_pts[reproj_mask, :], return_distance=False)
-            # proj_inds = search_tree.query(o_pts, return_distance=False)
-            proj_inds = np.squeeze(proj_inds).astype(np.int32)
+        #     # Project predictions on the frame points
+        #     search_tree = KDTree(in_pts, leaf_size=50)
+        #     proj_inds = search_tree.query(o_pts[reproj_mask, :], return_distance=False)
+        #     # proj_inds = search_tree.query(o_pts, return_distance=False)
+        #     proj_inds = np.squeeze(proj_inds).astype(np.int32)
 
-        else:
-            proj_inds = np.zeros((0,))
-            reproj_mask = np.zeros((0,))
+        # else:
+        #     proj_inds = np.zeros((0,))
+        #     reproj_mask = np.zeros((0,))
 
-        if self.set in ['val', 'test'] and self.n_test_frames > 1:
-            f_inc_proj_inds = []
-            f_inc_reproj_mask = []
-            for i in range(len(f_inc_points)):
-                # get val_points that are in range
-                radiuses = np.sum(np.square(f_inc_points[i] - p0), axis=1)
-                f_inc_reproj_mask.append(radiuses < (0.99 * self.in_R) ** 2)
+        # if self.set in ['val', 'test'] and self.n_test_frames > 1:
+        #     f_inc_proj_inds = []
+        #     f_inc_reproj_mask = []
+        #     for i in range(len(f_inc_points)):
+        #         # get val_points that are in range
+        #         radiuses = np.sum(np.square(f_inc_points[i] - p0), axis=1)
+        #         f_inc_reproj_mask.append(radiuses < (0.99 * self.in_R) ** 2)
 
-                # Project predictions on the frame points
-                search_tree = KDTree(in_pts, leaf_size=100)
-                f_inc_proj_inds.append(search_tree.query(f_inc_points[i][f_inc_reproj_mask[-1], :], return_distance=False))
-                # f_inc_proj_inds.append(search_tree.query(f_inc_points[i], return_distance=False))
-                f_inc_proj_inds[-1] = np.squeeze(f_inc_proj_inds[-1]).astype(np.int32)
+        #         # Project predictions on the frame points
+        #         search_tree = KDTree(in_pts, leaf_size=100)
+        #         f_inc_proj_inds.append(search_tree.query(f_inc_points[i][f_inc_reproj_mask[-1], :], return_distance=False))
+        #         # f_inc_proj_inds.append(search_tree.query(f_inc_points[i], return_distance=False))
+        #         f_inc_proj_inds[-1] = np.squeeze(f_inc_proj_inds[-1]).astype(np.int32)
 
         # ===================================================================#
         # Rotation augmentations
@@ -629,13 +629,13 @@ class SemanticKittiDataSet(Dataset):
             sample.update ({
                 's_ind': s_ind,
                 'f_ind': f_ind,
-                'val_labels_list': o_labels ,
-                'val_ins_labels_list': o_ins_labels ,
-                'val_center_label_list': o_center_labels ,
-                'proj_inds': proj_inds,
-                'reproj_mask': reproj_mask,
-                'f_inc_proj_inds': f_inc_proj_inds ,
-                'f_inc_reproj_mask': f_inc_reproj_mask,
+                # 'val_labels_list': o_labels ,
+                # 'val_ins_labels_list': o_ins_labels ,
+                # 'val_center_label_list': o_center_labels ,
+                # 'proj_inds': proj_inds,
+                # 'reproj_mask': reproj_mask,
+                # 'f_inc_proj_inds': f_inc_proj_inds ,
+                # 'f_inc_reproj_mask': f_inc_reproj_mask,
             })
             
         

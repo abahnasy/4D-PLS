@@ -20,6 +20,9 @@ def pc_normalize(pc):
 
 
 class SemanticKittiSegDataset(Dataset):
+    """ Dataset class definition for semantic segmentation tasks
+    the loaded samples are individual frames from semantic kitti data, not 4d volumes
+    """
     def __init__(self, data_dir='./data', mode ='train', num_points=4096, uniform=True) -> None:
         super().__init__()
         self.path = hydra.utils.to_absolute_path(data_dir)
