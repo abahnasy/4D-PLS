@@ -34,6 +34,7 @@ from sklearn.neighbors import KDTree
 
 # PLY reader
 from utils.ply import read_ply, write_ply
+from utils.debugging import d_print
 
 # Metrics
 from utils.metrics import IoU_from_confusions, fast_confusion
@@ -78,6 +79,16 @@ class ModelTester:
         self.epoch = checkpoint['epoch']
         net.eval()
         print("Model and training state restored.")
+
+        # AB: create color map
+        # AB: you need the learning map to access the class values
+        # AB: divide by 255.0 to get [0,1] open3d color range
+        import yaml
+        CFG = yaml.safe_load(open('./data/semantic-kitti.yaml', 'r'))
+        self.learning_map_inv = CFG["learning_map_inv"] #(  [0,19] -> [0,255])
+        self.color_dict = CFG["color_map"]
+        
+        
 
         return
 
@@ -176,9 +187,9 @@ class ModelTester:
                         f_ind = f_inds[b_i, 1]
                         if f_ind % config.n_test_frames != config.n_test_frames-1:
                              flag = False
-
+                
                 if processed == test_loader.dataset.all_inds.shape[0]:
-                    return
+                    return test_path #AB: return the test path to be used in the subsequent functions in run_testing.py
                 #if not flag:
                 #    continue
                 #else:
@@ -191,6 +202,8 @@ class ModelTester:
 
                     outputs, centers_output, var_output, embedding = net(batch, config)
                     #ins_preds = torch.zeros(outputs.shape[0])
+                    
+                    
 
                     probs = softmax(outputs).cpu().detach().numpy()
 
@@ -198,8 +211,33 @@ class ModelTester:
                         if label_value in test_loader.dataset.ignored_labels:
                             probs = np.insert(probs, l_ind, 0, axis=1)
                     preds = test_loader.dataset.label_values[np.argmax(probs, axis=1)]
+                    temp_points = np.load("Center_points_{}_{}.npy".format(batch.frame_inds.cpu().numpy()[0,0],batch.frame_inds.cpu().numpy()[0,1]))
+                    
+                    
+
+                    # d_print(temp_points.shape[0])
+                    # d_print(preds.shape[0])
+                    # colors = np.zeros_like(temp_points)
+                    # for i in range(len(colors)):
+                    #     cc_idx = self.learning_map_inv[preds[i]]
+                    #     colors[i] = self.color_dict[cc_idx]
+                    # # d_print(colors.shape)
+
+                    # assert temp_points.shape[0] == preds.shape[0]
+                    # import open3d as o3d
+                    # pcd = o3d.geometry.PointCloud()
+                    # pcd.points = o3d.utility.Vector3dVector(temp_points)
+                    # pcd.colors = o3d.utility.Vector3dVector(colors / 255.0)
+                    # abs_path = "Center_points_colored_{}_{}.ply".format(batch.frame_inds.cpu().numpy()[0,0],batch.frame_inds.cpu().numpy()[0,1])
+                    # o3d.io.write_point_cloud("{}".format(abs_path), pcd)
+
                     preds = torch.from_numpy(preds)
                     preds.to(outputs.device)
+                   
+
+
+
+
                     sequence = test_loader.dataset.sequences[batch.frame_inds[0][0]]
                     pose = test_loader.dataset.poses[batch.frame_inds[0][0]][batch.frame_inds[0][1]]
                     if sequence not in self.instances:
@@ -286,12 +324,18 @@ class ModelTester:
                     frame_probs_uint8 = np.zeros((proj_mask.shape[0], nc_model), dtype=np.uint8)
                     frame_c_probs = np.zeros((proj_mask.shape[0], 1))
                     ins_preds = np.zeros((proj_mask.shape[0]))
-
-                    frame_probs = frame_probs_uint8[proj_mask, :].astype(np.float32) / 255
+                    
+                    frame_probs = frame_probs_uint8[proj_mask, :].astype(np.float32) / 255 # AB: how come?
+                    # d_print(">>>>>>>>>")
+                    
                     frame_probs = test_smooth * frame_probs + (1 - test_smooth) * proj_probs
+                    # d_print(frame_probs)
                     frame_probs_uint8[proj_mask, :] = (frame_probs * 255).astype(np.uint8)
                     ins_preds[proj_mask] = proj_ins_probs
                     frame_c_probs[proj_mask] = proj_c_probs
+                    
+                    # d_print(frame_c_probs.sum())
+                    # d_print(frame_c_probs)
 
                     #np.save(filepath, frame_probs_uint8)
                     #print ('Saving {}'.format(filepath_i))
@@ -362,7 +406,41 @@ class ModelTester:
                         # Predicted labels
                         frame_preds = test_loader.dataset.label_values[np.argmax(frame_probs_uint8_bis,
                                                                                  axis=1)].astype(np.int32)
+                    #     d_print(frame_preds.shape)
+                        
 
+                    #     # ================
+
+                    #     # load the original frame
+                    #     seq_path = join(test_loader.dataset.path, 'sequences', test_loader.dataset.sequences[s_ind])
+                    #     velo_file = join(seq_path, 'velodyne', test_loader.dataset.frames[s_ind][f_ind] + '.bin')
+                    #     frame_points = np.fromfile(velo_file, dtype=np.float32)
+                    #     frame_points = frame_points.reshape((-1, 4))
+                    #     frame_points = frame_points[:,:3]
+                    #     assert frame_points.shape[0] == frame_preds.shape[0]
+
+
+                    #     colors = np.zeros_like(frame_points)
+                    #     for i in range(len(colors)):
+                    #         cc_idx = self.learning_map_inv[frame_preds[i]]
+                    #         colors[i] = self.color_dict[cc_idx]
+                    # # d_print(colors.shape)
+                    #     import open3d as o3d
+                    #     pcd = o3d.geometry.PointCloud()
+                    #     pcd.points = o3d.utility.Vector3dVector(frame_points)
+                    #     pcd.colors = o3d.utility.Vector3dVector(colors / 255.0)
+                    #     abs_path = "frame_points_colored_{}_{}.ply".format(batch.frame_inds.cpu().numpy()[0,0],batch.frame_inds.cpu().numpy()[0,1])
+                    #     o3d.io.write_point_cloud("{}".format(abs_path), pcd)
+
+                    #     exit()
+
+                        
+
+                        # ================
+
+
+
+                        # d_print(np.unique(frame_preds))
                         np.save(filepath, frame_preds)
                         #print('Saving {}'.format(filepath))
                         # Save some of the frame pots
@@ -529,8 +607,6 @@ class ModelTester:
             # Break when reaching number of desired votes
             if last_min > num_votes:
                 break
-
-        return
 
 
 
