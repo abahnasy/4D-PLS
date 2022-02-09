@@ -69,10 +69,11 @@ class VNDGCNN(BaseModel):
         free_dim = 4,
         pretreianed_weights = False, #AB: load pretrained weights for backbone and heads
         freeze_head_weights = False,
+        ckpt_path = None,
         normal_channel=False,
         ):
         super(VNDGCNN, self).__init__()
-        self.pooling = 'mean' #TODO, move to configurations
+        self.pooling = 'max' #TODO, move to configurations
         self.n_knn = 20 #TODO, move to configurations
         self.pre_train = pre_train
         self.class_w = class_w
@@ -80,6 +81,7 @@ class VNDGCNN(BaseModel):
         self.free_dim = free_dim
         self.pretreianed_weights = pretreianed_weights
         self.freeze_head_weights = freeze_head_weights
+        self.ckpt_path = ckpt_path
         #AB: variable is used in the loss function 
         self.valid_labels = np.sort([c for c in lbl_values if c not in ign_lbls])
         # Choose segmentation loss
@@ -93,10 +95,10 @@ class VNDGCNN(BaseModel):
         self.C = len(lbl_values) - len(ign_lbls)
         out_dim = 256 #AB: make the size of the output of PointNet match the output size of KPConv
         
-        self.bn7 = nn.BatchNorm1d(64)
+        # self.bn7 = nn.BatchNorm1d(64)
         self.bn8 = nn.BatchNorm1d(256)
         self.bn9 = nn.BatchNorm1d(256)
-        self.bn10 = nn.BatchNorm1d(128)
+        # self.bn10 = nn.BatchNorm1d(128)
         
         self.conv1 = VNLinearLeakyReLU(2, 64//3)
         self.conv2 = VNLinearLeakyReLU(64//3, 64//3)
@@ -129,13 +131,13 @@ class VNDGCNN(BaseModel):
         self.conv9 = nn.Sequential(nn.Conv1d(256, 256, kernel_size=1, bias=False),
                                    self.bn9,
                                    nn.LeakyReLU(negative_slope=0.2))
-        self.dp2 = nn.Dropout(p=0.5)
-        self.conv10 = nn.Sequential(nn.Conv1d(256, 128, kernel_size=1, bias=False),
-                                   self.bn10,
-                                   nn.LeakyReLU(negative_slope=0.2))
+        # self.dp2 = nn.Dropout(p=0.5)
+        # self.conv10 = nn.Sequential(nn.Conv1d(256, 128, kernel_size=1, bias=False),
+                                #    self.bn10,
+                                #    nn.LeakyReLU(negative_slope=0.2))
         # AB: additional layer compared to the plane implementation, 
         # keep it since it outputs the same feature size needed for the heads !
-        self.conv11 = nn.Conv1d(128, out_dim, kernel_size=1, bias=False)
+        # self.conv11 = nn.Conv1d(128, out_dim, kernel_size=1, bias=False)
 
         
         # AB: add the prediction heads
@@ -147,7 +149,7 @@ class VNDGCNN(BaseModel):
         self.sigmoid = nn.Sigmoid()
 
         if self.pretreianed_weights:
-            self._load_pretrained_weights()
+            self._load_pretrained_weights(self.ckpt_path)
 
         if self.freeze_head_weights:
             #TODO:Freeze head weights
@@ -159,14 +161,6 @@ class VNDGCNN(BaseModel):
                     if p.requires_grad:
                         p.requires_grad = False
                         d_print("freezed", bcolors.OKBLUE)
-
-
-        def _load_pretrained_weights(self):
-            """ Load pretrained weights for net, do it for the finetuning task
-            backbone weights will be loaded from TODO
-            heads weights will be loaded from 4D-Panoptic Segmentation check point
-            """
-            raise NotImplementedError
         
 
     def forward(self, x):
@@ -225,9 +219,9 @@ class VNDGCNN(BaseModel):
         x = self.conv8(x)
         x = self.dp1(x)
         x = self.conv9(x)
-        x = self.dp2(x)
-        x = self.conv10(x)
-        x = self.conv11(x)
+        # x = self.dp2(x)
+        # x = self.conv10(x)
+        # x = self.conv11(x)
 
         x = x.transpose(2,1).contiguous()
 

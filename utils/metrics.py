@@ -24,7 +24,7 @@
 
 # Basic libs
 import numpy as np
-
+from utils.debugging import d_print
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -83,13 +83,14 @@ def fast_confusion(true, pred, label_values=None):
 
         # Vectorized confusion
         vec_conf = np.bincount(true * num_classes + pred)
+        # d_print(vec_conf.shape)
 
         # Add possible missing values due to classes not being in pred or true
         #print(vec_conf.shape)
         if vec_conf.shape[0] < num_classes ** 2:
             vec_conf = np.pad(vec_conf, (0, num_classes ** 2 - vec_conf.shape[0]), 'constant')
         #print(vec_conf.shape)
-
+        # d_print(vec_conf.shape)
         # Reshape confusion in a matrix
         return vec_conf.reshape((num_classes, num_classes))
 
